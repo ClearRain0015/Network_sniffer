@@ -134,7 +134,3 @@ Save Module（PCAP / TXT / CSV）
 2. Python 3.12+ 可能与某些旧版 Scapy 不兼容，建议使用 Python 3.8 ~ 3.11
 3. 虚拟机 NAT 模式下抓包可能受限，建议使用桥接模式
 4. 抓取大量数据包时注意内存占用，可配合 BPF 过滤器使用
-
-## License
-
-仅用于课程设计学习。
