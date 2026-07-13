@@ -1,19 +1,4 @@
-# Sniffer — 网络数据包嗅探器
-# ============================
-# 核心依赖（必须安装）
-scapy>=2.5.0          # 抓包 + 协议解析 + PCAP保存
-
-# GUI（二选一，推荐 PyQt5）
-PyQt5>=5.15.0         # 推荐：界面更接近 Wireshark
-
-# 可选依赖（增强功能）
-# dpkt>=1.9.8         # 备选：PCAP 读写
-# matplotlib>=3.7.0   # 统计图表
-# pyshark>=0.6         # 备选：基于 Wireshark/tshark 的抓包
-
-# ──────────────────────────────────
-# 快速安装：
-#   pip install -r requirements.txt
-#
-# 仅需基础功能：
-#   pip install scapy
+scapy>=2.5.0
+PyQt5>=5.15.0
+dpkt>=1.9.8
+matplotlib>=3.7.0

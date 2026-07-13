@@ -14,7 +14,7 @@ GUI 中提供一个输入框，用户输入过滤表达式即可实时过滤。
   tcp port 443       → 只显示 HTTPS
 """
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 class BPFFilter:

@@ -12,20 +12,7 @@ gui/packet_detail.py — 数据包详情面板
 
 from typing import Optional
 
-from parser.base import ParsedPacket, ProtocolLayer
-
-# 模块级 PyQt5 导入（供 _show_protocol_tree 等方法使用）
-_HAS_PYQT5 = False
-try:
-    from PyQt5.QtWidgets import (
-        QWidget, QVBoxLayout, QSplitter,
-        QTreeWidget, QTreeWidgetItem, QTextEdit,
-    )
-    from PyQt5.QtCore import Qt
-    from PyQt5.QtGui import QFont
-    _HAS_PYQT5 = True
-except ImportError:
-    pass
+from protocols.base import ParsedPacket, ProtocolLayer
 
 
 class PacketDetailPanel:
@@ -49,6 +36,13 @@ class PacketDetailPanel:
     # ── PyQt5 实现 ─────────────────────────
 
     def _init_pyqt5(self):
+        from PyQt5.QtWidgets import (
+            QWidget, QVBoxLayout, QSplitter,
+            QTreeWidget, QTreeWidgetItem, QTextEdit,
+        )
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtGui import QFont
+
         widget = QSplitter(Qt.Vertical)
 
         # 上半：协议字段树
@@ -124,6 +118,7 @@ class PacketDetailPanel:
     def _show_protocol_tree(self, packet: ParsedPacket):
         """构建协议字段树"""
         if self.backend == "pyqt5":
+            from PyQt5.QtWidgets import QTreeWidgetItem
             self._proto_tree.clear()
             # 添加每个协议层
             for layer in packet.layers:

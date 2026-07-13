@@ -17,9 +17,8 @@ from typing import List
 from .packet_table import PacketTable
 from .packet_detail import PacketDetailPanel
 from capture import Sniffer, list_interfaces
-from capture.device import InterfaceInfo
-from parser.base import ParsedPacket
-from parser.parser_chain import ParserChain
+from protocols.base import ParsedPacket
+from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
 
@@ -30,11 +29,10 @@ try:
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QPushButton, QLineEdit, QLabel, QComboBox,
         QSplitter, QTextEdit, QTreeWidget, QTreeWidgetItem,
-        QHeaderView, QMessageBox, QStatusBar, QDialog,
-        QScrollArea,
+        QHeaderView, QMessageBox, QStatusBar,
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-    from PyQt5.QtGui import QFont, QPixmap
+    from PyQt5.QtGui import QFont
     _HAS_PYQT5 = True
 except ImportError:
     pass
@@ -80,7 +78,6 @@ if _HAS_PYQT5:
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
             self._reassembler = FragmentReassembler()
-            self._interfaces: List[InterfaceInfo] = []  # 网卡列表
             self._build_ui()
 
             self._pending_packets: List[ParsedPacket] = []
@@ -99,15 +96,15 @@ if _HAS_PYQT5:
 
             tl.addWidget(QLabel("网卡:"))
             self.iface_combo = QComboBox()
-            self.iface_combo.setMinimumWidth(200)
+            self.iface_combo.setMinimumWidth(180)
             self._refresh_interfaces()
             tl.addWidget(self.iface_combo)
 
-            self.btn_start = QPushButton("▶ 开始抓包")
+            self.btn_start = QPushButton("开始抓包")
             self.btn_start.clicked.connect(self._on_start)
             tl.addWidget(self.btn_start)
 
-            self.btn_stop = QPushButton("⏹ 停止")
+            self.btn_stop = QPushButton("停止")
             self.btn_stop.setEnabled(False)
             self.btn_stop.clicked.connect(self._on_stop)
             tl.addWidget(self.btn_stop)
@@ -124,7 +121,7 @@ if _HAS_PYQT5:
 
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
-            self.filter_input.setPlaceholderText("例如: tcp, udp port 80, host 192.168.1.1 ...")
+            self.filter_input.setPlaceholderText("tcp, udp port 80, host 192.168.1.1 ...")
             self.filter_input.setMinimumWidth(250)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
@@ -168,27 +165,17 @@ if _HAS_PYQT5:
         # ── 事件处理 ──────────────────────────
 
         def _refresh_interfaces(self):
-            """刷新网卡列表"""
             self.iface_combo.clear()
-            self._interfaces = list_interfaces()
-            for iface in self._interfaces:
-                label = f"{iface.name} ({iface.ip})"
-                if iface.is_loopback:
-                    label += " [Loopback]"
-                self.iface_combo.addItem(label)
+            self._iface_names = []  # 存 UUID 名
+            for iface in list_interfaces():
+                self.iface_combo.addItem(iface.display)
+                self._iface_names.append(iface.name)
             if self.iface_combo.count():
                 self.iface_combo.setCurrentIndex(0)
 
-        def _get_selected_iface(self) -> str:
-            """获取当前选中网卡的 scapy 可用名称"""
-            idx = self.iface_combo.currentIndex()
-            if 0 <= idx < len(self._interfaces):
-                return self._interfaces[idx].scapy_name
-            return "eth0"
-
         def _on_start(self):
-            """开始抓包"""
-            iface_name = self._get_selected_iface()
+            idx = self.iface_combo.currentIndex()
+            iface_name = self._iface_names[idx] if idx >= 0 else None
             bpf = self.filter_input.text().strip()
             self._capture_counter = 0
             self.packets.clear()
@@ -201,33 +188,28 @@ if _HAS_PYQT5:
                 self.sniff_thread.start()
                 self.btn_start.setEnabled(False)
                 self.btn_stop.setEnabled(True)
-                self.btn_stats.setEnabled(False)
-                self.status_label.setText(f"正在监听 {iface_name} …")
+                self.status_label.setText(f"正在监听 {iface_name} ...")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"无法开始抓包:\n{e}")
 
         def _on_stop(self):
-            """停止抓包"""
             if self.sniff_thread:
                 self.sniff_thread.stop()
                 self.sniff_thread.wait(3000)
                 self.sniff_thread = None
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
-            self.btn_stats.setEnabled(True)
             self.status_label.setText(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
 
         def _on_save(self):
-            """保存 PCAP + CSV"""
             from save.pcap_save import save_packets
             if not self.packets:
                 QMessageBox.information(self, "提示", "没有数据包可保存")
                 return
             path = save_packets(self.packets)
-            self.status_label.setText(f"已保存到 {path}（含 CSV）")
+            self.status_label.setText(f"已保存到 {path}")
 
         def _on_clear(self):
-            """清空列表"""
             self.packets.clear()
             self._pending_packets.clear()
             self.packet_table.clear()
@@ -236,66 +218,15 @@ if _HAS_PYQT5:
             self.status_label.setText("已清空")
 
         def _on_filter_apply(self):
-            """应用过滤器"""
             bpf = self.filter_input.text().strip()
             if self.sniff_thread and self.sniff_thread.isRunning():
                 self.sniff_thread.sniffer.set_filter(bpf)
             self.status_label.setText(f"过滤器: {bpf if bpf else '(无)'}")
 
         def _on_show_stats(self):
-            """显示统计信息 + 协议分布图表"""
-            import os, tempfile
-            from statistics.flow_statistics import (
-                compute_statistics, format_statistics, plot_protocol_distribution,
-            )
-
+            from statistics.flow_statistics import compute_statistics, format_statistics
             stats = compute_statistics(self.packets)
-            text = format_statistics(stats)
-
-            # 保存图表到临时文件（避免 plt.show() 与 Qt 冲突）
-            tmp_path = os.path.join(tempfile.gettempdir(), "sniffer_stats.png")
-            plot_protocol_distribution(stats, save_path=tmp_path)
-
-            # 可缩放对话框
-            dialog = QDialog(self)
-            dialog.setWindowTitle("流量统计")
-            dialog.resize(760, 1050)
-            dialog.setMinimumSize(520, 600)
-            layout = QVBoxLayout(dialog)
-
-            # 图表 + 文本用 Splitter 分隔，图表区初始 700px 方形
-            if os.path.exists(tmp_path):
-                pixmap = QPixmap(tmp_path)
-                splitter = QSplitter(Qt.Vertical)
-
-                scroll = QScrollArea()
-                chart_label = QLabel()
-                chart_label.setPixmap(pixmap)
-                chart_label.setAlignment(Qt.AlignCenter)
-                scroll.setWidget(chart_label)
-                scroll.setWidgetResizable(True)
-                splitter.addWidget(scroll)
-
-                text_edit = QTextEdit()
-                text_edit.setReadOnly(True)
-                text_edit.setPlainText(text)
-                text_edit.setFont(QFont("Consolas", 10))
-                splitter.addWidget(text_edit)
-
-                splitter.setSizes([720, 400])
-                layout.addWidget(splitter, 1)
-            else:
-                dialog.setMinimumSize(480, 400)
-                text_edit = QTextEdit()
-                text_edit.setReadOnly(True)
-                text_edit.setPlainText(text)
-                text_edit.setFont(QFont("Consolas", 10))
-                layout.addWidget(text_edit, 1)
-
-            btn = QPushButton("关闭")
-            btn.clicked.connect(dialog.accept)
-            layout.addWidget(btn)
-            dialog.exec_()
+            QMessageBox.information(self, "流量统计", format_statistics(stats))
 
         def _on_packet_arrived(self, packet: ParsedPacket):
             with self._pending_lock:
@@ -305,11 +236,8 @@ if _HAS_PYQT5:
             with self._pending_lock:
                 if not self._pending_packets:
                     return
-                # 每批最多 200 个（QTableView 性能好，可以多拿）
-                batch = self._pending_packets[:200]
-                self._pending_packets = self._pending_packets[200:]
-
-            parsed = []
+                batch = self._pending_packets[:]
+                self._pending_packets.clear()
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
@@ -319,14 +247,7 @@ if _HAS_PYQT5:
                 self._capture_counter += 1
                 packet.no = self._capture_counter
                 self.packets.append(packet)
-                parsed.append(packet)
-
-            if parsed:
-                self.packet_table.add_packets(parsed)
-
-            # 同步 self.packets 上限
-            while len(self.packets) > 10000:
-                self.packets.pop(0)
+                self.packet_table.add_packet(packet)
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
@@ -363,7 +284,6 @@ else:
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
             self._reassembler = FragmentReassembler()
-            self._interfaces: List[InterfaceInfo] = []
 
             self._build_tk_ui()
 
@@ -375,16 +295,16 @@ else:
             self.tk.Label(toolbar, text="网卡:").pack(side=self.tk.LEFT)
             self.iface_var = self.tk.StringVar()
             self.iface_combo = self.ttk.Combobox(
-                toolbar, textvariable=self.iface_var, width=25)
+                toolbar, textvariable=self.iface_var, width=20)
             self._refresh_interfaces_tk()
             self.iface_combo.pack(side=self.tk.LEFT, padx=4)
 
             self.btn_start = self.tk.Button(
-                toolbar, text="▶ 开始抓包", command=self._on_start_tk)
+                toolbar, text="开始抓包", command=self._on_start_tk)
             self.btn_start.pack(side=self.tk.LEFT, padx=2)
 
             self.btn_stop = self.tk.Button(
-                toolbar, text="⏹ 停止", command=self._on_stop_tk, state=self.tk.DISABLED)
+                toolbar, text="停止", command=self._on_stop_tk, state=self.tk.DISABLED)
             self.btn_stop.pack(side=self.tk.LEFT, padx=2)
 
             self.btn_save = self.tk.Button(
@@ -405,15 +325,10 @@ else:
                 toolbar, text="应用", command=self._on_filter_apply_tk)
             self.btn_filter.pack(side=self.tk.LEFT, padx=2)
 
-            self.btn_stats = self.tk.Button(
-                toolbar, text="统计", command=self._on_show_stats_tk)
-            self.btn_stats.pack(side=self.tk.LEFT, padx=6)
-
-            # 分隔线
+            # 包列表
             self.ttk.Separator(self.root, orient=self.tk.HORIZONTAL).pack(
                 fill=self.tk.X, padx=4)
 
-            # 包列表
             list_frame = self.tk.Frame(self.root)
             list_frame.pack(fill=self.tk.BOTH, expand=True, padx=4, pady=2)
 
@@ -447,23 +362,15 @@ else:
         # ── Tkinter 事件处理 ──────────────────
 
         def _refresh_interfaces_tk(self):
-            self._interfaces = list_interfaces()
-            self.iface_combo["values"] = [
-                f"{i.name} ({i.ip})" + (" [Loopback]" if i.is_loopback else "")
-                for i in self._interfaces
-            ]
-            if self._interfaces:
+            interfaces = list_interfaces()
+            self._tk_iface_names = [i.name for i in interfaces]
+            self.iface_combo["values"] = [i.display for i in interfaces]
+            if interfaces:
                 self.iface_combo.current(0)
 
-        def _get_selected_iface(self) -> str:
-            """获取当前选中网卡的 scapy 可用名称"""
-            idx = self.iface_combo.current()
-            if 0 <= idx < len(self._interfaces):
-                return self._interfaces[idx].scapy_name
-            return "eth0"
-
         def _on_start_tk(self):
-            iface_name = self._get_selected_iface()
+            idx = self.iface_combo.current()
+            iface_name = self._tk_iface_names[idx] if idx >= 0 else None
             bpf = self.filter_var.get().strip()
             self._capture_counter = 0
             self.packets.clear()
@@ -477,8 +384,7 @@ else:
             self._sniff_thread.start()
             self.btn_start.config(state=self.tk.DISABLED)
             self.btn_stop.config(state=self.tk.NORMAL)
-            self.btn_stats.config(state=self.tk.DISABLED)
-            self.status_var.set(f"正在监听 {iface_name} …")
+            self.status_var.set(f"正在监听 {iface_name} ...")
 
         def _on_stop_tk(self):
             if self.sniffer:
@@ -486,7 +392,6 @@ else:
                 self.sniffer = None
             self.btn_start.config(state=self.tk.NORMAL)
             self.btn_stop.config(state=self.tk.DISABLED)
-            self.btn_stats.config(state=self.tk.NORMAL)
             self.status_var.set(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
 
         def _on_save_tk(self):
@@ -494,7 +399,7 @@ else:
             if not self.packets:
                 return
             path = save_packets(self.packets)
-            self.status_var.set(f"已保存到 {path}（含 CSV）")
+            self.status_var.set(f"已保存到 {path}")
 
         def _on_clear_tk(self):
             self.packets.clear()
@@ -511,64 +416,17 @@ else:
                 self.sniffer.set_filter(bpf)
             self.status_var.set(f"过滤器: {bpf if bpf else '(无)'}")
 
-        def _on_show_stats_tk(self):
-            """显示统计信息 + 协议分布图表"""
-            import os, tempfile
-            from statistics.flow_statistics import (
-                compute_statistics, format_statistics, plot_protocol_distribution,
-            )
-            if not self.packets:
-                return
-            stats = compute_statistics(self.packets)
-            text = format_statistics(stats)
-
-            # 保存图表到临时文件（避免 plt.show() 与 Tk 冲突）
-            tmp_path = os.path.join(tempfile.gettempdir(), "sniffer_stats.png")
-            plot_protocol_distribution(stats, save_path=tmp_path)
-
-            # 可缩放对话框 — 按图片尺寸设置窗口大小
-            dlg = self.tk.Toplevel(self.root)
-            dlg.title("流量统计")
-
-            # 图表 — 完整显示
-            if os.path.exists(tmp_path):
-                from PIL import Image, ImageTk
-                img = Image.open(tmp_path)
-                dlg.geometry("740x1100")
-                dlg.minsize(500, 600)
-                self._tk_chart_img = ImageTk.PhotoImage(img)
-                chart_label = self.tk.Label(dlg, image=self._tk_chart_img)
-                chart_label.pack(pady=4)
-            else:
-                dlg.geometry("680x600")
-                dlg.minsize(480, 400)
-
-            # 文本统计
-            frame = self.tk.Frame(dlg)
-            frame.pack(fill=self.tk.BOTH, expand=True, padx=4, pady=2)
-            text_widget = self.tk.Text(frame, font=("Consolas", 10), wrap=self.tk.NONE)
-            text_widget.insert("1.0", text)
-            text_widget.config(state=self.tk.DISABLED)
-            scrollbar = self.ttk.Scrollbar(frame, orient=self.tk.VERTICAL, command=text_widget.yview)
-            text_widget.config(yscrollcommand=scrollbar.set)
-            text_widget.pack(side=self.tk.LEFT, fill=self.tk.BOTH, expand=True)
-            scrollbar.pack(side=self.tk.RIGHT, fill=self.tk.Y)
-
-            self.tk.Button(dlg, text="关闭", command=dlg.destroy).pack(pady=4)
-
         def _on_tk_packet(self, packet: ParsedPacket):
             with self._tk_lock:
                 self._tk_pending.append(packet)
 
         def _tk_flush(self):
             with self._tk_lock:
-                if not self._tk_pending:
-                    self.root.after(100, self._tk_flush)
-                    return
-                # 每批最多处理 100 个，防止 UI 卡死
-                batch = self._tk_pending[:100]
-                self._tk_pending = self._tk_pending[100:]
-
+                if self._tk_pending:
+                    batch = self._tk_pending[:]
+                    self._tk_pending.clear()
+                else:
+                    batch = []
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
@@ -584,14 +442,6 @@ else:
                     packet.proto_name, packet.length_str,
                     packet.info or packet.summary,
                 ))
-
-            # 内存保护：超过 10000 条丢弃旧包
-            while len(self.packets) > 10000:
-                self.packets.pop(0)
-                children = self.tree.get_children()
-                if children:
-                    self.tree.delete(children[0])
-
             self.root.after(100, self._tk_flush)
 
         def _on_tree_select_tk(self, event):

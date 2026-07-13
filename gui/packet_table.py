@@ -6,230 +6,143 @@ gui/packet_table.py — 数据包列表组件
 以表格形式展示已捕获数据包概览：
   No │ Time │ Source │ Destination │ Protocol │ Length │ Info
 
-PyQt5：使用 QTableView + QAbstractTableModel（高性能，只渲染可见行）
-Tkinter：使用 Treeview（回退方案）
+支持 PyQt5 QTreeWidget 和 Tkinter Treeview 两种后端。
 """
 
-from typing import Optional, Callable, List
+from typing import Optional, Callable
 
-from parser.base import ParsedPacket
-
-HEADERS = ["No", "Time", "Source", "Destination", "Protocol", "Length", "Info"]
-COL_WIDTHS = [50, 130, 160, 160, 80, 70, 400]
-MAX_PACKETS = 10000
+from protocols.base import ParsedPacket
 
 
-# ═══════════════════════════════════════════════════════════
-#  PyQt5：QTableView + Model
-# ═══════════════════════════════════════════════════════════
+class PacketTable:
+    """
+    数据包列表
 
-_HAS_PYQT5 = False
-try:
-    from PyQt5.QtWidgets import (
-        QTableView, QHeaderView, QAbstractItemView, QTreeView, QFrame,
-    )
-    from PyQt5.QtCore import (
-        Qt, QAbstractTableModel, QModelIndex, pyqtSignal,
-    )
-    _HAS_PYQT5 = True
-except ImportError:
-    pass
+    用法:
+        table = PacketTable(backend="pyqt5")
+        table.add_packet(parsed_packet)
+        table.on_select = lambda pkt: show_detail(pkt)
+    """
 
-if _HAS_PYQT5:
+    def __init__(self, backend: str = "pyqt5"):
+        self.backend = backend
+        self.on_select: Optional[Callable[[ParsedPacket], None]] = None
+        self._packets = []
+        self.widget = None
 
-    class _PacketTableModel(QAbstractTableModel):
-        """数据包表格 Model — 数据存 Python list，只渲染可见行"""
-
-        def __init__(self):
-            super().__init__()
-            self._packets: List[ParsedPacket] = []
-
-        # ── QAbstractTableModel 接口 ──────────
-
-        def rowCount(self, parent=QModelIndex()):
-            return len(self._packets)
-
-        def columnCount(self, parent=QModelIndex()):
-            return 7
-
-        def data(self, index, role=Qt.DisplayRole):
-            if not index.isValid() or role != Qt.DisplayRole:
-                return None
-            pkt = self._packets[index.row()]
-            col = index.column()
-            values = [
-                str(pkt.no), pkt.timestamp_str,
-                pkt.src_str, pkt.dst_str,
-                pkt.proto_name, pkt.length_str,
-                pkt.info or pkt.summary,
-            ]
-            return values[col]
-
-        def headerData(self, section, orientation, role=Qt.DisplayRole):
-            if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-                return HEADERS[section]
-            return None
-
-        # ── 批量操作 ──────────────────────────
-
-        def add_packets(self, packets: list):
-            """批量追加，超过上限自动裁剪旧行"""
-            if not packets:
-                return
-            old_count = len(self._packets)
-
-            self.beginInsertRows(QModelIndex(), old_count,
-                                 old_count + len(packets) - 1)
-            self._packets.extend(packets)
-            self.endInsertRows()
-
-            # 超过上限则从头部裁剪
-            over = len(self._packets) - MAX_PACKETS
-            if over > 0:
-                self.beginRemoveRows(QModelIndex(), 0, over - 1)
-                del self._packets[:over]
-                self.endRemoveRows()
-
-        def clear(self):
-            """清空"""
-            if not self._packets:
-                return
-            self.beginRemoveRows(QModelIndex(), 0, len(self._packets) - 1)
-            self._packets.clear()
-            self.endRemoveRows()
-
-        def get_packet(self, row: int) -> Optional[ParsedPacket]:
-            if 0 <= row < len(self._packets):
-                return self._packets[row]
-            return None
-
-
-    class PacketTable:
-        """
-        数据包列表（PyQt5 高性能版）
-
-        用法:
-            table = PacketTable(backend="pyqt5")
-            table.add_packets([pkt1, pkt2, ...])
-            table.on_select = lambda pkt: show_detail(pkt)
-        """
-
-        def __init__(self, backend: str = "pyqt5"):
-            self.backend = backend
-            self.on_select: Optional[Callable[[ParsedPacket], None]] = None
-            self._model = _PacketTableModel()
-            self._build()
-            self.widget = self._view
-
-        def _build(self):
-            view = QTableView()
-            view.setModel(self._model)
-            view.setSelectionBehavior(QAbstractItemView.SelectRows)
-            view.setSelectionMode(QAbstractItemView.SingleSelection)
-            view.setAlternatingRowColors(True)
-            view.setShowGrid(False)
-            view.verticalHeader().setVisible(False)
-            view.setSortingEnabled(False)
-            view.setEditTriggers(QAbstractItemView.NoEditTriggers)
-
-            header = view.horizontalHeader()
-            header.setStretchLastSection(True)
-            for i, w in enumerate(COL_WIDTHS[:-1]):
-                header.resizeSection(i, w)
-
-            # 选中回调
-            view.selectionModel().selectionChanged.connect(self._on_select)
-
-            self._view = view
-
-        def _on_select(self, selected, deselected):
-            if not self.on_select:
-                return
-            rows = self._view.selectionModel().selectedRows()
-            if rows:
-                pkt = self._model.get_packet(rows[0].row())
-                if pkt:
-                    self.on_select(pkt)
-
-        # ── 公共方法 ──────────────────────────
-
-        def add_packets(self, packets: list):
-            self._model.add_packets(packets)
-            # 滚动到底部
-            self._view.scrollToBottom()
-
-        def clear(self):
-            self._model.clear()
-
-
-# ═══════════════════════════════════════════════════════════
-#  Tkinter 回退方案（Treeview，保持不变）
-# ═══════════════════════════════════════════════════════════
-
-else:
-
-    class PacketTable:
-        """数据包列表（Tkinter 版）"""
-
-        def __init__(self, backend: str = "tkinter"):
-            self.backend = backend
-            self.on_select: Optional[Callable[[ParsedPacket], None]] = None
-            self._packets = []
-            self.widget = None
+        if backend == "pyqt5":
+            self._init_pyqt5()
+        else:
             self._init_tkinter()
 
-        def _init_tkinter(self):
-            import tkinter as tk
-            from tkinter import ttk
+    # ── PyQt5 实现 ─────────────────────────
 
-            frame = ttk.Frame()
-            columns = HEADERS
-            tree = ttk.Treeview(frame, columns=columns, show="headings")
-            for col, w in zip(columns, COL_WIDTHS):
-                tree.heading(col, text=col)
-                tree.column(col, width=w, anchor=tk.W)
+    def _init_pyqt5(self):
+        from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QHeaderView
+        from PyQt5.QtCore import Qt
 
-            scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
-            tree.configure(yscrollcommand=scrollbar.set)
-            tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree = QTreeWidget()
+        tree.setColumnCount(7)
+        tree.setHeaderLabels([
+            "No", "Time", "Source", "Destination",
+            "Protocol", "Length", "Info",
+        ])
+        tree.setRootIsDecorated(False)
+        tree.setAlternatingRowColors(True)
+        tree.setSelectionBehavior(tree.SelectRows)
+        tree.setSelectionMode(tree.SingleSelection)
 
-            tree.bind("<<TreeviewSelect>>", self._on_tk_select)
-            self._tk_tree = tree
-            self._tk_frame = frame
-            self.widget = frame
+        # 列宽
+        header = tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
 
-        def _on_tk_select(self, event):
-            selection = self._tk_tree.selection()
-            if selection and self.on_select:
-                idx = self._tk_tree.index(selection[0])
-                if idx < len(self._packets):
-                    self.on_select(self._packets[idx])
+        tree.itemSelectionChanged.connect(self._on_selection_changed)
 
-        # ── 公共方法 ──────────────────────────
+        self._tree = tree
+        self.widget = tree
 
-        def add_packets(self, packets: list):
-            tree = self._tk_tree
-            for pkt in packets:
-                self._packets.append(pkt)
-                tree.insert("", "end", values=(
-                    str(pkt.no), pkt.timestamp_str,
-                    pkt.src_str, pkt.dst_str,
-                    pkt.proto_name, pkt.length_str,
-                    pkt.info or pkt.summary,
-                ))
-            # 滚动到底部
-            if packets:
-                tree.yview_moveto(1.0)
+    def _on_selection_changed(self):
+        """PyQt5 选中行事件"""
+        items = self._tree.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        idx = self._tree.indexOfTopLevelItem(item)
+        if 0 <= idx < len(self._packets) and self.on_select:
+            self.on_select(self._packets[idx])
 
-            # 内存保护
-            while len(self._packets) > MAX_PACKETS:
-                self._packets.pop(0)
-                children = tree.get_children()
-                if children:
-                    tree.delete(children[0])
+    # ── Tkinter 实现 ──────────────────────
 
-        def clear(self):
-            self._packets.clear()
+    def _init_tkinter(self):
+        import tkinter as tk
+        from tkinter import ttk
+
+        frame = ttk.Frame()
+        columns = ("No", "Time", "Source", "Destination", "Protocol", "Length", "Info")
+        tree = ttk.Treeview(frame, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+        col_widths = [50, 120, 150, 150, 80, 70, 400]
+        for col, w in zip(columns, col_widths):
+            tree.column(col, width=w, anchor=tk.W)
+
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        tree.bind("<<TreeviewSelect>>", self._on_tk_select)
+        self._tk_tree = tree
+        self._tk_frame = frame
+        self.widget = frame
+
+    def _on_tk_select(self, event):
+        selection = self._tk_tree.selection()
+        if selection and self.on_select:
+            idx = self._tk_tree.index(selection[0])
+            if idx < len(self._packets):
+                self.on_select(self._packets[idx])
+
+    # ── 公共方法 ──────────────────────────
+
+    def add_packet(self, packet: ParsedPacket):
+        """添加一行数据包"""
+        self._packets.append(packet)
+
+        row_data = (
+            str(packet.no),
+            packet.timestamp_str,
+            packet.src_str,
+            packet.dst_str,
+            packet.proto_name,
+            packet.length_str,
+            packet.info or packet.summary,
+        )
+
+        if self.backend == "pyqt5":
+            from PyQt5.QtWidgets import QTreeWidgetItem
+            item = QTreeWidgetItem(list(row_data))
+            self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
+            # 自动滚动到底部
+            self._tree.scrollToBottom()
+        else:
+            self._tk_tree.insert("", "end", values=row_data)
+            # Tkinter 自动滚动
+            children = self._tk_tree.get_children()
+            if children:
+                self._tk_tree.see(children[-1])
+
+    def clear(self):
+        """清空列表"""
+        self._packets.clear()
+        if self.backend == "pyqt5":
+            self._tree.clear()
+        else:
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)

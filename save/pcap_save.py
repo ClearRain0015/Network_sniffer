@@ -13,7 +13,7 @@ import os
 import time
 from typing import List
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 # 默认保存目录
@@ -26,7 +26,6 @@ def save_packets(packets: List[ParsedPacket],
     保存数据包（智能选择格式）
     -------------------------
     优先保存为 PCAP，scapy 不可用时回退到 TXT。
-    同时保存 CSV 格式。
     返回保存路径。
     """
     if filepath is None:
@@ -34,25 +33,14 @@ def save_packets(packets: List[ParsedPacket],
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         filepath = os.path.join(DEFAULT_SAVE_DIR, f"capture_{timestamp}")
 
-    saved_path = None
-
     # 尝试 PCAP
     try:
-        saved_path = save_as_pcap(packets, filepath + ".pcap")
+        return save_as_pcap(packets, filepath + ".pcap")
     except ImportError:
         pass
 
     # 回退 TXT
-    if saved_path is None:
-        saved_path = save_as_txt(packets, filepath + ".txt")
-
-    # 同时保存 CSV
-    try:
-        save_as_csv(packets, filepath + ".csv")
-    except Exception:
-        pass
-
-    return saved_path
+    return save_as_txt(packets, filepath + ".txt")
 
 
 def save_as_pcap(packets: List[ParsedPacket], filepath: str) -> str:

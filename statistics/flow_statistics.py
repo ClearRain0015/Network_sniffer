@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from typing import List, Dict
 import time
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 def compute_statistics(packets: List[ParsedPacket]) -> dict:
@@ -159,18 +159,7 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
     pip install matplotlib
     """
     try:
-        import matplotlib
-        matplotlib.use("Agg")  # 必须在 import pyplot 之前，避免与 Qt 冲突
         import matplotlib.pyplot as plt
-        # 设置中文字体（Windows: Microsoft YaHei, macOS/Linux fallback）
-        for font in ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "WenQuanYi Micro Hei"]:
-            try:
-                matplotlib.font_manager.findfont(font, fallback_to_default=False)
-                plt.rcParams["font.sans-serif"] = [font, "DejaVu Sans"]
-                plt.rcParams["axes.unicode_minus"] = False
-                break
-            except Exception:
-                continue
     except ImportError:
         print("[!] 需要安装 matplotlib: pip install matplotlib")
         return
@@ -196,6 +185,5 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
 
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
     else:
         plt.show()
