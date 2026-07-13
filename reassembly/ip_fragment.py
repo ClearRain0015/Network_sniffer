@@ -1,220 +1,189 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-reassembly/ip_fragment.py — IP 分片重组模块
-===========================================
-课程设计重点模块，面试/答辩高频问题。
+"""IPv4 fragment reassembly.
 
-实现思路：
-  1. 维护一个 fragment_table
-  2. key = (src_ip, dst_ip, identification)
-  3. 收到分片 → 加入缓存
-  4. 所有分片到齐（MF=0 且 Offset 覆盖完整）→ 排序 → 拼接 → 输出完整 IP 包
-
-超时淘汰：超过 30 秒未完成重组 → 丢弃该分片组
+The reassembler caches IPv4 fragments by source, destination, protocol and
+identification. Once the final fragment arrives and the byte range is complete,
+it rebuilds one complete packet and returns it for normal display/filtering.
 """
 
 import time
-from collections import defaultdict
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 from protocols.base import ParsedPacket
+from protocols.parser_chain import ParserChain
 
 
-# 分片组 key: (src_ip, dst_ip, identification)
-FragmentKey = Tuple[str, str, int]
+FragmentKey = Tuple[str, str, int, int]
+
+
+def _ipv4_checksum(header: bytes) -> int:
+    if len(header) % 2:
+        header += b"\x00"
+    total = 0
+    for i in range(0, len(header), 2):
+        total += int.from_bytes(header[i:i + 2], "big")
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
 
 
 class _FragmentGroup:
-    """单个 IP 包的分片缓存"""
-
     def __init__(self, key: FragmentKey):
         self.key = key
         self.fragments: List[ParsedPacket] = []
         self.created_at = time.time()
-        self.total_len = 0          # 预计总长度（从最后一个分片得出）
-        self.has_last = False       # 是否收到 MF=0 的分片
-        self._sorted = False
+        self.total_payload_len: Optional[int] = None
 
     def add(self, packet: ParsedPacket) -> None:
-        """添加一个分片"""
+        # Replace duplicate offset fragments with the newest copy.
+        self.fragments = [p for p in self.fragments if p.ip_frag != packet.ip_frag]
         self.fragments.append(packet)
-        self._sorted = False
 
-        # 检查是否为最后一个分片
         mf_flag = (packet.ip_flags & 0x01) != 0
-        if not mf_flag and packet.ip_frag > 0:
-            # MF=0 且 offset>0 → 这是最后一个分片
-            self.has_last = True
-            self.total_len = packet.ip_frag * 8 + packet.ip_len
+        if not mf_flag:
+            self.total_payload_len = self._payload_start(packet) + len(self._payload(packet))
 
     def is_complete(self) -> bool:
-        """
-        判断是否所有分片到齐
-        -------------------
-        条件：
-          1. 收到了最后一个分片（MF=0, Offset>0）
-          2. 所有分片按 Offset 排序后连续覆盖 [0, total_len)
-        """
-        if not self.has_last or len(self.fragments) < 2:
-            # 没有最后一个分片，或只有一个分片（不是分片包）
+        if self.total_payload_len is None or not self.fragments:
             return False
 
-        # 排序
-        sorted_frags = sorted(self.fragments, key=lambda p: p.ip_frag)
+        ranges = []
+        for frag in self.fragments:
+            start = self._payload_start(frag)
+            end = start + len(self._payload(frag))
+            if end > start:
+                ranges.append((start, end))
+        if not ranges:
+            return False
 
-        # 检查连续性
-        expected_offset = 0
-        for frag in sorted_frags:
-            frag_offset = frag.ip_frag * 8  # Offset 单位是 8 字节
-            if frag_offset != expected_offset:
-                return False  # 有缺口
-            # 注意：ip_len 包含 IP 头部，需要减去头部得到数据长度
-            expected_offset += (frag.ip_len - 20)  # 假设 20 字节 IP 头
-
-        # 如果 MF=0 的分片覆盖到了预期总长度，说明完整
-        return True
+        ranges.sort()
+        covered = 0
+        for start, end in ranges:
+            if start > covered:
+                return False
+            covered = max(covered, end)
+            if covered >= self.total_payload_len:
+                return True
+        return False
 
     def reassemble(self) -> Optional[ParsedPacket]:
-        """
-        重组分片
-        -------
-        按 Offset 排序后拼接 payload，
-        用第一个分片的头部信息作为新包的头部。
-        """
         if not self.is_complete():
             return None
 
-        sorted_frags = sorted(self.fragments, key=lambda p: p.ip_frag)
+        first = min(self.fragments, key=lambda p: p.ip_frag)
+        if first.ip_frag != 0:
+            return None
 
-        # 以第一个分片为基础
-        base = sorted_frags[0]
+        payload = bytearray(self.total_payload_len or 0)
+        for frag in self.fragments:
+            start = self._payload_start(frag)
+            data = self._payload(frag)
+            payload[start:start + len(data)] = data
 
-        # 拼接所有分片的 payload（跳过各分片的 IP 头）
-        combined_payload = b""
-        for frag in sorted_frags:
-            ip_header_len = 20  # 简化：假设固定 20 字节 IP 头
-            payload = frag.raw_data[14 + ip_header_len:]  # 14=以太网头
-            combined_payload += payload
-
-        # 构造重组后的完整 IP 包（保留第一个分片的 IP 头）
-        ip_header = sorted_frags[0].raw_data[14:34]  # 14 字节以太网头 + 20 字节 IP 头
-
-        # 修改 IP 头中的 Total Length 和清除 Flags/Fragment Offset
-        new_ip_header = bytearray(ip_header)
-        new_total_len = 20 + len(combined_payload)
-        new_ip_header[2:4] = new_total_len.to_bytes(2, "big")
-        new_ip_header[6:8] = b"\x00\x00"  # 清除 Flags + Fragment Offset
-
-        # 构造完整的重组原始数据
-        eth_header = base.raw_data[:14]
-        raw_data = eth_header + bytes(new_ip_header) + combined_payload
-
-        # 更新 ParsedPacket 信息
-        base.raw_data = raw_data
-        base.length = len(raw_data)
-        base.ip_len = new_total_len
-        base.ip_flags = 0
-        base.ip_frag = 0
-        base.info = f"[重组] {base.info}"
-
-        base.add_layer("IP Reassembly", {
-            "Fragment Count": len(sorted_frags),
-            "Reassembled Length": len(combined_payload),
-            "Original Fragments": ", ".join(
-                f"Offset={f.ip_frag}" for f in sorted_frags
-            ),
+        raw_data = self._build_packet(first, bytes(payload))
+        rebuilt = ParsedPacket(
+            no=first.no,
+            timestamp=first.timestamp,
+            raw_data=raw_data,
+            length=len(raw_data),
+            summary=first.summary,
+        )
+        rebuilt = ParserChain.parse(rebuilt)
+        rebuilt.info = f"[Reassembled {len(self.fragments)} fragments] {rebuilt.info or first.info}"
+        rebuilt.add_layer("IP Reassembly", {
+            "Fragment Count": len(self.fragments),
+            "Reassembled Payload Length": len(payload),
+            "Original Offsets": ", ".join(str(f.ip_frag) for f in sorted(self.fragments, key=lambda p: p.ip_frag)),
         })
+        return rebuilt
 
-        return base
+    @staticmethod
+    def _payload_start(packet: ParsedPacket) -> int:
+        return packet.ip_frag * 8
+
+    @staticmethod
+    def _payload(packet: ParsedPacket) -> bytes:
+        ip_end = packet.network_offset + packet.ip_len if packet.ip_len else len(packet.raw_data)
+        ip_end = min(ip_end, len(packet.raw_data))
+        return packet.raw_data[packet.transport_offset:ip_end]
+
+    @staticmethod
+    def _build_packet(first: ParsedPacket, payload: bytes) -> bytes:
+        ip_offset = first.network_offset
+        header_len = max(20, first.transport_offset - first.network_offset)
+        ip_header = bytearray(first.raw_data[ip_offset:ip_offset + header_len])
+
+        total_len = header_len + len(payload)
+        ip_header[2:4] = total_len.to_bytes(2, "big")
+        ip_header[6:8] = b"\x00\x00"
+        ip_header[10:12] = b"\x00\x00"
+        checksum = _ipv4_checksum(bytes(ip_header))
+        ip_header[10:12] = checksum.to_bytes(2, "big")
+
+        prefix = first.raw_data[:ip_offset]
+        return prefix + bytes(ip_header) + payload
 
     @property
     def age(self) -> float:
-        """分片组存活时间（秒）"""
         return time.time() - self.created_at
 
 
 class FragmentReassembler:
-    """
-    IP 分片重组器
-
-    用法:
-        reassembler = FragmentReassembler(timeout=30)
-        result = reassembler.process(parsed_packet)
-
-    如果数据包不是分片，直接返回原包。
-    如果是分片且重组完成，返回重组后的包。
-    如果是分片但还未完成，返回 None（不显示，等待后续分片）。
-    """
+    """Cache and reassemble IPv4 fragments."""
 
     def __init__(self, timeout: float = 30.0):
-        """
-        timeout: 分片超时时间（秒）
-                 超过此时间未完成重组的分片组将被丢弃。
-        """
         self.timeout = timeout
         self._table: Dict[FragmentKey, _FragmentGroup] = {}
         self._completed_count = 0
+        self._expired_count = 0
 
     @property
     def pending_groups(self) -> int:
-        """待重组的分片组数量"""
         return len(self._table)
 
     @property
     def completed_count(self) -> int:
-        """已完成的重组次数"""
         return self._completed_count
 
+    @property
+    def expired_count(self) -> int:
+        return self._expired_count
+
     def process(self, packet: ParsedPacket) -> Optional[ParsedPacket]:
-        """
-        处理一个数据包
-        -------------
-        如果不是分片 → 直接返回
-        如果是分片 → 加入缓存，如果重组完成则返回完整包，否则返回 None
-        """
-        # ── 判断是否为分片 ───────────────────
+        if packet is None:
+            return None
         mf_flag = (packet.ip_flags & 0x01) != 0
         frag_offset = packet.ip_frag
-
         if not mf_flag and frag_offset == 0:
-            # 不是分片包（MF=0 且 Offset=0）
             return packet
 
-        # ── 是分片包，加入缓存 ───────────────
-        key = (packet.ip_src, packet.ip_dst, packet.ip_id)
+        if not packet.ip_src or not packet.ip_dst:
+            return packet
 
-        # 定期清理过期分片
         self._cleanup_expired()
-
-        if key not in self._table:
-            self._table[key] = _FragmentGroup(key)
-
-        group = self._table[key]
+        key = (packet.ip_src, packet.ip_dst, packet.ip_id, packet.ip_proto)
+        group = self._table.setdefault(key, _FragmentGroup(key))
         group.add(packet)
 
-        # ── 检查是否可重组 ───────────────────
         if group.is_complete():
             del self._table[key]
             self._completed_count += 1
             return group.reassemble()
-
-        # 还在等待其他分片
-        return None  # 暂不显示
+        return None
 
     def _cleanup_expired(self) -> None:
-        """清理过期的分片组"""
         expired_keys = [
             key for key, group in self._table.items()
             if group.age > self.timeout
         ]
         for key in expired_keys:
             del self._table[key]
+            self._expired_count += 1
 
     def get_stats(self) -> dict:
-        """获取重组器统计信息"""
         return {
             "pending_groups": self.pending_groups,
-            "completed_count": self._completed_count,
+            "completed_count": self.completed_count,
+            "expired_count": self.expired_count,
             "timeout": self.timeout,
         }

@@ -1,167 +1,148 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-statistics/flow_statistics.py — 流量统计
-========================================
-对已捕获数据包做统计分析：
-  - 协议分布
-  - Top N IP 地址
-  - 包速率
-  - 端口分布
-"""
+"""Traffic statistics for captured packets."""
 
-from collections import Counter, defaultdict
-from typing import List, Dict
-import time
+from collections import Counter
+from typing import List
 
 from protocols.base import ParsedPacket
 
 
 def compute_statistics(packets: List[ParsedPacket]) -> dict:
-    """
-    计算流量统计数据
-
-    返回字典包含：
-      - total_packets    : 总包数
-      - total_bytes      : 总字节数
-      - duration         : 捕获时长（秒）
-      - pps              : 每秒包数
-      - protocol_dist    : 协议分布 {协议: 数量}
-      - top_src_ips      : Top 源 IP
-      - top_dst_ips      : Top 目的 IP
-      - top_src_ports    : Top 源端口
-      - top_dst_ports    : Top 目的端口
-    """
     if not packets:
-        return {"total_packets": 0}
+        return {
+            "total_packets": 0,
+            "total_bytes": 0,
+            "duration": 0,
+            "pps": 0,
+        }
 
     total_bytes = sum(p.length for p in packets)
-
-    # 时长
-    first_ts = packets[0].timestamp
-    last_ts = packets[-1].timestamp
-    duration = max(last_ts - first_ts, 0.001)
-
-    # 协议分布
-    proto_counter = Counter(p.proto_name or "Other" for p in packets)
-
-    # Top IP
+    duration = max(packets[-1].timestamp - packets[0].timestamp, 0.001)
+    proto_counter = Counter(_packet_protocol(p) for p in packets)
     src_ip_counter = Counter(p.ip_src for p in packets if p.ip_src)
     dst_ip_counter = Counter(p.ip_dst for p in packets if p.ip_dst)
+    ip_counter = Counter()
+    ip_counter.update(src_ip_counter)
+    ip_counter.update(dst_ip_counter)
+    src_port_counter = Counter(p.src_port for p in packets if p.src_port)
+    dst_port_counter = Counter(p.dst_port for p in packets if p.dst_port)
+    port_counter = Counter()
+    port_counter.update(src_port_counter)
+    port_counter.update(dst_port_counter)
 
-    # Top 端口
-    src_port_counter = Counter(
-        p.src_port for p in packets if p.src_port
-    )
-    dst_port_counter = Counter(
-        p.dst_port for p in packets if p.dst_port
-    )
-
-    # 包大小分布
     size_buckets = {
-        "< 64B": 0, "64-128B": 0, "128-256B": 0,
-        "256-512B": 0, "512-1024B": 0, "> 1024B": 0,
+        "<64B": 0,
+        "64-127B": 0,
+        "128-255B": 0,
+        "256-511B": 0,
+        "512-1023B": 0,
+        ">=1024B": 0,
     }
-    for p in packets:
-        l = p.length
-        if l < 64: size_buckets["< 64B"] += 1
-        elif l < 128: size_buckets["64-128B"] += 1
-        elif l < 256: size_buckets["128-256B"] += 1
-        elif l < 512: size_buckets["256-512B"] += 1
-        elif l < 1024: size_buckets["512-1024B"] += 1
-        else: size_buckets["> 1024B"] += 1
+    for pkt in packets:
+        length = pkt.length
+        if length < 64:
+            size_buckets["<64B"] += 1
+        elif length < 128:
+            size_buckets["64-127B"] += 1
+        elif length < 256:
+            size_buckets["128-255B"] += 1
+        elif length < 512:
+            size_buckets["256-511B"] += 1
+        elif length < 1024:
+            size_buckets["512-1023B"] += 1
+        else:
+            size_buckets[">=1024B"] += 1
 
     return {
         "total_packets": len(packets),
         "total_bytes": total_bytes,
+        "avg_packet_size": total_bytes / len(packets),
         "duration": duration,
         "pps": len(packets) / duration,
+        "bps": total_bytes / duration,
         "protocol_dist": dict(proto_counter.most_common()),
+        "top_ips": ip_counter.most_common(10),
         "top_src_ips": src_ip_counter.most_common(10),
         "top_dst_ips": dst_ip_counter.most_common(10),
+        "top_ports": port_counter.most_common(10),
         "top_src_ports": src_port_counter.most_common(10),
         "top_dst_ports": dst_port_counter.most_common(10),
         "size_buckets": size_buckets,
     }
 
 
+def _packet_protocol(packet: ParsedPacket) -> str:
+    if packet.has_layer("HTTP"):
+        return "HTTP"
+    if packet.has_layer("DNS"):
+        return "DNS"
+    if packet.proto_name:
+        return packet.proto_name
+    if packet.eth_type == 0x0806:
+        return "ARP"
+    if packet.ip_proto == 6:
+        return "TCP"
+    if packet.ip_proto == 17:
+        return "UDP"
+    if packet.ip_proto == 1:
+        return "ICMP"
+    if packet.ip_src or packet.ip_dst:
+        return "IPv4"
+    return "Other"
+
+
 def format_statistics(stats: dict) -> str:
-    """将统计数据格式化为可读文本"""
     if stats.get("total_packets", 0) == 0:
         return "暂无数据"
 
-    lines = []
-    lines.append("=" * 50)
-    lines.append("  流量统计报告")
-    lines.append("=" * 50)
-    lines.append("")
-
-    # 基本统计
-    lines.append(f"📦 总数据包:    {stats['total_packets']}")
-    lines.append(f"📏 总字节数:    {stats['total_bytes']:,} bytes "
-                 f"({stats['total_bytes']/1024:.1f} KB)")
-    lines.append(f"⏱  捕获时长:    {stats['duration']:.2f} 秒")
-    lines.append(f"⚡ 平均速率:    {stats['pps']:.1f} pps")
-    lines.append("")
-
-    # 协议分布
-    lines.append("─" * 50)
-    lines.append("📊 协议分布:")
+    total = stats["total_packets"]
+    lines = [
+        "流量统计报告",
+        "=" * 48,
+        f"数据包数量: {total}",
+        f"总字节数: {stats['total_bytes']:,} bytes ({stats['total_bytes'] / 1024:.1f} KB)",
+        f"平均包长: {stats['avg_packet_size']:.1f} bytes",
+        f"捕获时长: {stats['duration']:.2f} s",
+        f"平均速率: {stats['pps']:.1f} packets/s, {stats['bps']:.1f} bytes/s",
+        "",
+        "协议分布:",
+    ]
     for proto, count in stats.get("protocol_dist", {}).items():
-        pct = count / stats["total_packets"] * 100
-        bar = "█" * int(pct / 5)
-        lines.append(f"  {proto:<8} {count:>5} ({pct:>5.1f}%) {bar}")
-    lines.append("")
+        lines.append(f"  {proto:<8} {count:>6} ({_pct(count, total)})")
 
-    # 包大小分布
-    lines.append("─" * 50)
-    lines.append("📏 包大小分布:")
-    for bucket, count in stats.get("size_buckets", {}).items():
-        pct = count / stats["total_packets"] * 100 if stats["total_packets"] else 0
-        lines.append(f"  {bucket:<12} {count:>5} ({pct:>5.1f}%)")
-    lines.append("")
+    lines.extend(["", "Top IP:"])
+    for ip, count in stats.get("top_ips", []):
+        lines.append(f"  {ip:<18} {count:>6}")
 
-    # Top Source IP
-    lines.append("─" * 50)
-    lines.append("⬆  Top 10 源 IP:")
+    lines.extend(["", "Top 源 IP:"])
     for ip, count in stats.get("top_src_ips", []):
-        lines.append(f"  {ip:<18} {count:>5}")
-    lines.append("")
+        lines.append(f"  {ip:<18} {count:>6}")
 
-    # Top Destination IP
-    lines.append("⬇  Top 10 目的 IP:")
+    lines.extend(["", "Top 目的 IP:"])
     for ip, count in stats.get("top_dst_ips", []):
-        lines.append(f"  {ip:<18} {count:>5}")
-    lines.append("")
+        lines.append(f"  {ip:<18} {count:>6}")
 
-    # Top Ports
-    lines.append("─" * 50)
-    lines.append("🔌 Top 源端口:")
-    for port, count in stats.get("top_src_ports", []):
-        lines.append(f"  {port:<8} {count:>5}")
-    lines.append("")
-    lines.append("🔌 Top 目的端口:")
-    for port, count in stats.get("top_dst_ports", []):
-        lines.append(f"  {port:<8} {count:>5}")
+    lines.extend(["", "Top 端口:"])
+    for port, count in stats.get("top_ports", []):
+        lines.append(f"  {port:<8} {count:>6}")
 
-    lines.append("")
-    lines.append("=" * 50)
+    lines.extend(["", "包大小分布:"])
+    for bucket, count in stats.get("size_buckets", {}).items():
+        lines.append(f"  {bucket:<10} {count:>6} ({_pct(count, total)})")
 
     return "\n".join(lines)
 
 
-# ── 可选：流量图表 ──────────────────────────
+def _pct(count: int, total: int) -> str:
+    return f"{(count / total * 100 if total else 0):.1f}%"
+
 
 def plot_protocol_distribution(stats: dict, save_path: str = None):
-    """
-    绘制协议分布饼图（需要 matplotlib）
-
-    pip install matplotlib
-    """
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[!] 需要安装 matplotlib: pip install matplotlib")
+        print("matplotlib is required for plotting")
         return
 
     proto_dist = stats.get("protocol_dist", {})
@@ -170,17 +151,9 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
 
     labels = list(proto_dist.keys())
     sizes = list(proto_dist.values())
-    colors = plt.cm.Set3(range(len(labels)))
-
     fig, ax = plt.subplots()
-    ax.pie(sizes, labels=labels, colors=colors, autopct="%1.1f%%",
-           startangle=90, pctdistance=0.85)
-    ax.set_title("协议分布", fontsize=14)
-
-    # 中心空心 → 环形图效果
-    centre_circle = plt.Circle((0, 0), 0.70, fc="white")
-    fig.gca().add_artist(centre_circle)
-
+    ax.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=90)
+    ax.set_title("Protocol Distribution")
     ax.axis("equal")
 
     if save_path:

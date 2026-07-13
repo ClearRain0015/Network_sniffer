@@ -32,7 +32,7 @@ class ICMPParser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """IPv4 Protocol == 1"""
-        return packet.ip_proto == 1 and packet.transport_offset > 0
+        return packet.ip_proto == 1 and packet.transport_offset > 0 and packet.ip_frag == 0
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:

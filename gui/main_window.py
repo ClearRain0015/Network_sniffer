@@ -76,6 +76,7 @@ if _HAS_PYQT5:
 
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
+            self._all_packets: List[ParsedPacket] = []
             self._capture_counter = 0
             self._raw_counter = 0
             self._filtered_counter = 0
@@ -183,6 +184,7 @@ if _HAS_PYQT5:
             self._raw_counter = 0
             self._filtered_counter = 0
             self.packets.clear()
+            self._all_packets.clear()
             self._pending_packets.clear()
             self.packet_table.clear()
 
@@ -219,6 +221,7 @@ if _HAS_PYQT5:
 
         def _on_clear(self):
             self.packets.clear()
+            self._all_packets.clear()
             self._pending_packets.clear()
             self.packet_table.clear()
             self.detail_panel.clear()
@@ -231,7 +234,7 @@ if _HAS_PYQT5:
             bpf = self.filter_input.text().strip()
             if self.sniff_thread and self.sniff_thread.isRunning():
                 self.sniff_thread.sniffer.set_filter(bpf)
-            self.status_label.setText(f"过滤器: {bpf if bpf else '(无)'}")
+            self._rebuild_filtered_packets()
 
         def _on_show_stats(self):
             from statistics.flow_statistics import compute_statistics, format_statistics
@@ -252,18 +255,43 @@ if _HAS_PYQT5:
                 self._raw_counter += 1
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
-                if self.filter_input.text().strip():
-                    if not BPFFilter.match(packet, self.filter_input.text().strip()):
-                        self._filtered_counter += 1
-                        continue
-                self._capture_counter += 1
-                packet.no = self._capture_counter
-                self.packets.append(packet)
-                self.packet_table.add_packet(packet)
+                if packet is None:
+                    continue
+                self._all_packets.append(packet)
+                if self._packet_matches_current_filter(packet):
+                    self._display_packet(packet)
+                else:
+                    self._filtered_counter += 1
             bpf = self.filter_input.text().strip()
             self.status_label.setText(
                 f"监听中 — 收到 {self._raw_counter}，显示 {self._capture_counter}，过滤 {self._filtered_counter}"
                 + (f"，过滤器: {bpf}" if bpf else "")
+            )
+
+        def _packet_matches_current_filter(self, packet: ParsedPacket) -> bool:
+            bpf = self.filter_input.text().strip()
+            return not bpf or BPFFilter.match(packet, bpf)
+
+        def _display_packet(self, packet: ParsedPacket):
+            self._capture_counter += 1
+            packet.no = self._capture_counter
+            self.packets.append(packet)
+            self.packet_table.add_packet(packet)
+
+        def _rebuild_filtered_packets(self):
+            self.packets.clear()
+            self.packet_table.clear()
+            self.detail_panel.clear()
+            self._capture_counter = 0
+            self._filtered_counter = 0
+            for packet in self._all_packets:
+                if self._packet_matches_current_filter(packet):
+                    self._display_packet(packet)
+                else:
+                    self._filtered_counter += 1
+            bpf = self.filter_input.text().strip()
+            self.status_label.setText(
+                f"过滤器: {bpf if bpf else '(无)'} — 显示 {self._capture_counter} / 总包 {len(self._all_packets)}"
             )
 
         def _on_packet_select(self, packet: ParsedPacket):
@@ -449,6 +477,8 @@ else:
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
+                if packet is None:
+                    continue
                 bpf = self.filter_var.get().strip()
                 if bpf and not BPFFilter.match(packet, bpf):
                     continue
