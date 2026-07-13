@@ -108,6 +108,9 @@ class TCPParser:
                       f"{dst_port}{'['+svc_dst+']' if svc_dst else ''}  [{flags_str}] " \
                       f"Seq={seq_num} Ack={ack_num} Win={window}"
 
+        # 提取 payload（TCP 头部之后的应用层数据）
+        packet.payload = tcp_raw[tcp_header_len:]
+
         packet.add_layer("TCP", {
             "Source Port": f"{src_port}{' ('+svc_src+')' if svc_src else ''}",
             "Destination Port": f"{dst_port}{' ('+svc_dst+')' if svc_dst else ''}",

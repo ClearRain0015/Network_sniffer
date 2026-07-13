@@ -60,6 +60,9 @@ class UDPParser:
         packet.info = f"{src_port}{'['+svc_src+']' if svc_src else ''} → " \
                       f"{dst_port}{'['+svc_dst+']' if svc_dst else ''}  Len={udp_length}"
 
+        # 提取 payload（UDP 头部 8 字节之后的应用层数据）
+        packet.payload = udp_raw[8:udp_length]
+
         packet.add_layer("UDP", {
             "Source Port": f"{src_port}{' ('+svc_src+')' if svc_src else ''}",
             "Destination Port": f"{dst_port}{' ('+svc_dst+')' if svc_dst else ''}",

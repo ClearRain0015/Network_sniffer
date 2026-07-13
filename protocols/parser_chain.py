@@ -21,11 +21,13 @@ from .base import ParsedPacket
 from .ethernet import EthernetParser
 from .arp import ARPParser
 from .ip import IPv4Parser
+from .ipv6 import IPv6Parser
 from .icmp import ICMPParser
 from .tcp import TCPParser
 from .udp import UDPParser
 from .http import HTTPParser
 from .dns import DNSParser
+from .dhcp import DHCPParser
 
 
 class ParserChain:
@@ -41,9 +43,11 @@ class ParserChain:
         EthernetParser,
         ARPParser,
         IPv4Parser,
+        IPv6Parser,
         ICMPParser,
         TCPParser,
         UDPParser,
+        DHCPParser,
         HTTPParser,
         DNSParser,
     ]
