@@ -166,17 +166,16 @@ if _HAS_PYQT5:
 
         def _refresh_interfaces(self):
             self.iface_combo.clear()
+            self._iface_names = []  # 存 UUID 名
             for iface in list_interfaces():
-                label = f"{iface.name} ({iface.ip})"
-                if iface.is_loopback:
-                    label += " [Loopback]"
-                self.iface_combo.addItem(label)
+                self.iface_combo.addItem(iface.display)
+                self._iface_names.append(iface.name)
             if self.iface_combo.count():
                 self.iface_combo.setCurrentIndex(0)
 
         def _on_start(self):
-            iface_text = self.iface_combo.currentText()
-            iface_name = iface_text.split(" ")[0] if iface_text else "eth0"
+            idx = self.iface_combo.currentIndex()
+            iface_name = self._iface_names[idx] if idx >= 0 else None
             bpf = self.filter_input.text().strip()
             self._capture_counter = 0
             self.packets.clear()
@@ -364,13 +363,14 @@ else:
 
         def _refresh_interfaces_tk(self):
             interfaces = list_interfaces()
-            self.iface_combo["values"] = [f"{i.name} ({i.ip})" for i in interfaces]
+            self._tk_iface_names = [i.name for i in interfaces]
+            self.iface_combo["values"] = [i.display for i in interfaces]
             if interfaces:
                 self.iface_combo.current(0)
 
         def _on_start_tk(self):
-            iface_text = self.iface_combo.get()
-            iface_name = iface_text.split(" ")[0] if iface_text else "eth0"
+            idx = self.iface_combo.current()
+            iface_name = self._tk_iface_names[idx] if idx >= 0 else None
             bpf = self.filter_var.get().strip()
             self._capture_counter = 0
             self.packets.clear()
