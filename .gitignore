@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.so
+*.pcap
+*.pcapng
+captures/
+*.log
+.env
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/
