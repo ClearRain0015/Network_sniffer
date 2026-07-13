@@ -28,7 +28,7 @@ class UDPParser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """IPv4 Protocol == 17"""
-        return packet.ip_proto == 17
+        return packet.ip_proto == 17 and packet.transport_offset > 0
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -38,9 +38,7 @@ class UDPParser:
         UDP 头部结构（8字节）:
           [ src_port(2) | dst_port(2) | length(2) | checksum(2) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
-        ip_ihl = (raw[0] & 0x0F) * 4
-        udp_offset = 14 + ip_ihl
+        udp_offset = packet.transport_offset
         udp_raw = packet.raw_data[udp_offset:]
 
         if len(udp_raw) < 8:
@@ -54,17 +52,22 @@ class UDPParser:
         packet.proto_name = "UDP"
         packet.src_port = src_port
         packet.dst_port = dst_port
+        payload_offset = udp_offset + 8
+        udp_payload_end = min(len(packet.raw_data), payload_offset + max(0, udp_length - 8))
+        udp_payload = packet.raw_data[payload_offset:udp_payload_end]
+        packet.set_payload(udp_payload, payload_offset)
 
         svc_src = UDPParser.PORT_SERVICE.get(src_port, "")
         svc_dst = UDPParser.PORT_SERVICE.get(dst_port, "")
-        packet.info = f"{src_port}{'['+svc_src+']' if svc_src else ''} → " \
-                      f"{dst_port}{'['+svc_dst+']' if svc_dst else ''}  Len={udp_length}"
+        packet.info = f"{src_port}{'['+svc_src+']' if svc_src else ''} -> " \
+                      f"{dst_port}{'['+svc_dst+']' if svc_dst else ''}  Len={udp_length} Payload={len(udp_payload)}"
 
         packet.add_layer("UDP", {
             "Source Port": f"{src_port}{' ('+svc_src+')' if svc_src else ''}",
             "Destination Port": f"{dst_port}{' ('+svc_dst+')' if svc_dst else ''}",
             "Length": udp_length,
             "Checksum": f"0x{checksum:04x}",
+            "Payload Length": len(udp_payload),
         }, raw=udp_raw[:8])
 
         return packet

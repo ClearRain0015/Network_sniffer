@@ -39,10 +39,7 @@ class DNSParser:
           [ transaction_id(2) | flags(2) | questions(2) |
             answer_rrs(2) | authority_rrs(2) | additional_rrs(2) ]
         """
-        raw = packet.raw_data[14:]
-        ip_ihl = (raw[0] & 0x0F) * 4
-        udp_offset = 14 + ip_ihl + 8  # UDP 头固定 8 字节
-        dns_raw = packet.raw_data[udp_offset:]
+        dns_raw = packet.payload
 
         if len(dns_raw) < 12:
             return packet

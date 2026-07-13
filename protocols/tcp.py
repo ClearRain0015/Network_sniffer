@@ -37,7 +37,7 @@ class TCPParser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """IPv4 Protocol == 6"""
-        return packet.ip_proto == 6
+        return packet.ip_proto == 6 and packet.transport_offset > 0
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -50,9 +50,7 @@ class TCPParser:
             offset_reserved_flags(2) | window(2) |
             checksum(2) | urgent_ptr(2) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
-        ip_ihl = (raw[0] & 0x0F) * 4
-        tcp_offset = 14 + ip_ihl
+        tcp_offset = packet.transport_offset
         tcp_raw = packet.raw_data[tcp_offset:]
 
         if len(tcp_raw) < 20:
@@ -70,6 +68,8 @@ class TCPParser:
         # 解析 Data Offset
         data_offset = (offset_flags >> 12) & 0x0F
         tcp_header_len = data_offset * 4
+        if tcp_header_len < 20 or len(tcp_raw) < tcp_header_len:
+            return packet
 
         # 解析所有 Flags
         flag_ns  = (offset_flags >> 8) & 0x01
@@ -92,7 +92,7 @@ class TCPParser:
         if flag_ece: flags_present.append("ECE")
         if flag_cwr: flags_present.append("CWR")
         if flag_ns:  flags_present.append("NS")
-        flags_str = " · ".join(flags_present) if flags_present else "NONE"
+        flags_str = " | ".join(flags_present) if flags_present else "NONE"
 
         # 填充 packet
         packet.proto_name = "TCP"
@@ -101,12 +101,19 @@ class TCPParser:
         packet.tcp_flags = offset_flags & 0x01FF
         packet.tcp_seq = seq_num
         packet.tcp_ack = ack_num
+        payload_offset = tcp_offset + tcp_header_len
+        ip_payload_end = min(
+            len(packet.raw_data),
+            packet.network_offset + packet.ip_len if packet.ip_len else len(packet.raw_data),
+        )
+        tcp_payload = packet.raw_data[payload_offset:ip_payload_end]
+        packet.set_payload(tcp_payload, payload_offset)
 
         svc_src = TCPParser.PORT_SERVICE.get(src_port, "")
         svc_dst = TCPParser.PORT_SERVICE.get(dst_port, "")
-        packet.info = f"{src_port}{'['+svc_src+']' if svc_src else ''} → " \
+        packet.info = f"{src_port}{'['+svc_src+']' if svc_src else ''} -> " \
                       f"{dst_port}{'['+svc_dst+']' if svc_dst else ''}  [{flags_str}] " \
-                      f"Seq={seq_num} Ack={ack_num} Win={window}"
+                      f"Seq={seq_num} Ack={ack_num} Win={window} Len={len(tcp_payload)}"
 
         packet.add_layer("TCP", {
             "Source Port": f"{src_port}{' ('+svc_src+')' if svc_src else ''}",
@@ -124,6 +131,7 @@ class TCPParser:
             "Window Size": window,
             "Checksum": f"0x{checksum:04x}",
             "Urgent Pointer": urgent_ptr,
+            "Payload Length": len(tcp_payload),
         }, raw=tcp_raw[:tcp_header_len])
 
         return packet

@@ -118,6 +118,8 @@ class PacketDetailPanel:
     def _show_protocol_tree(self, packet: ParsedPacket):
         """构建协议字段树"""
         if self.backend == "pyqt5":
+            from PyQt5.QtWidgets import QTreeWidgetItem
+
             self._proto_tree.clear()
             # 添加每个协议层
             for layer in packet.layers:
@@ -128,6 +130,13 @@ class PacketDetailPanel:
                     child = QTreeWidgetItem(layer_item)
                     child.setText(0, field_name)
                     child.setText(1, str(field_value))
+            payload_item = QTreeWidgetItem(self._proto_tree)
+            payload_item.setText(0, "Payload")
+            payload_item.setExpanded(True)
+            for field_name, field_value in self._payload_fields(packet).items():
+                child = QTreeWidgetItem(payload_item)
+                child.setText(0, field_name)
+                child.setText(1, str(field_value))
             self._proto_tree.expandAll()
         else:
             # Tkinter
@@ -144,6 +153,25 @@ class PacketDetailPanel:
                         text=field_name,
                         values=(str(field_value),),
                     )
+            payload_node = self._tk_tree.insert(
+                "", "end", text="Payload", values=("",), open=True,
+            )
+            for field_name, field_value in self._payload_fields(packet).items():
+                self._tk_tree.insert(
+                    payload_node, "end",
+                    text=field_name,
+                    values=(str(field_value),),
+                )
+
+    def _payload_fields(self, packet: ParsedPacket):
+        preview = packet.payload_text.replace("\r", "\\r").replace("\n", "\\n")
+        if len(preview) > 120:
+            preview = preview[:117] + "..."
+        return {
+            "Offset": packet.payload_offset if packet.payload else "",
+            "Length": len(packet.payload),
+            "Readable Preview": preview if preview else "(empty)",
+        }
 
     # ── 十六进制 dump ─────────────────────
 
@@ -155,36 +183,22 @@ class PacketDetailPanel:
           0000  00 11 22 33 44 55 66 77  88 99 aa bb cc dd ee ff   .."3DUfw........
           0010  00 11 22 33 44 55 66 77  88 99 aa bb cc dd ee ff   .."3DUfw........
         """
-        data = packet.raw_data
-        lines = []
-
-        for offset in range(0, len(data), 16):
-            chunk = data[offset:offset + 16]
-            hex_part = ""
-            ascii_part = ""
-
-            for i in range(16):
-                if i < len(chunk):
-                    b = chunk[i]
-                    hex_part += f"{b:02x} "
-                    # 中间加一个额外空格区分前后 8 字节
-                    if i == 7:
-                        hex_part += " "
-                    # 可打印字符
-                    if 32 <= b < 127:
-                        ascii_part += chr(b)
-                    else:
-                        ascii_part += "."
-                else:
-                    hex_part += "   "
-                    if i == 7:
-                        hex_part += " "
-
-            # 补齐不足16字节的情况
-            hex_part = hex_part.ljust(50)
-            lines.append(f"{offset:04x}  {hex_part} {ascii_part}")
-
-        text = "\n".join(lines)
+        sections = [
+            "Raw Packet Bytes",
+            packet.hexdump(packet.raw_data),
+        ]
+        if packet.payload:
+            sections.extend([
+                "",
+                f"Payload Bytes (offset {packet.payload_offset}, length {len(packet.payload)})",
+                packet.hexdump(packet.payload),
+                "",
+                "Readable Payload",
+                packet.payload_text,
+            ])
+        else:
+            sections.extend(["", "Payload: (empty)"])
+        text = "\n".join(sections)
 
         if self.backend == "pyqt5":
             self._hex_view.setPlainText(text)

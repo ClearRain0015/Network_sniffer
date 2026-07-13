@@ -43,7 +43,11 @@ class IPv4Parser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """以太网 EtherType == 0x0800（IPv4）"""
-        return packet.eth_type == 0x0800 and len(packet.raw_data) >= 34
+        offset = IPv4Parser._ip_offset(packet)
+        if offset is None or len(packet.raw_data) < offset + 20:
+            return False
+        first = packet.raw_data[offset]
+        return (first >> 4) == 4 and (first & 0x0F) >= 5
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -56,7 +60,11 @@ class IPv4Parser:
             ttl(1) | proto(1) | checksum(2) |
             src_ip(4) | dst_ip(4) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        ip_offset = IPv4Parser._ip_offset(packet)
+        if ip_offset is None:
+            return packet
+
+        raw = packet.raw_data[ip_offset:]
 
         if len(raw) < 20:
             return packet
@@ -67,7 +75,7 @@ class IPv4Parser:
         ihl = ver_ihl & 0x0F
         header_len = ihl * 4  # 单位：字节
 
-        if len(raw) < header_len:
+        if version != 4 or len(raw) < header_len:
             return packet
 
         # DSCP + ECN
@@ -109,10 +117,15 @@ class IPv4Parser:
         packet.ip_flags = flags
         packet.ip_frag = fragment_offset
         packet.ip_ttl = ttl
+        packet.network_offset = ip_offset
+        packet.transport_offset = ip_offset + header_len
 
         proto_name = IPv4Parser.PROTO_MAP.get(proto, f"Unknown({proto})")
         packet.proto_name = proto_name
-        packet.info = f"{src_ip} → {dst_ip}  TTL={ttl}"
+        ip_payload_end = min(len(packet.raw_data), ip_offset + total_length)
+        packet.set_payload(packet.raw_data[packet.transport_offset:ip_payload_end],
+                           packet.transport_offset)
+        packet.info = f"{src_ip} -> {dst_ip}  TTL={ttl}"
 
         packet.add_layer("IPv4", {
             "Version": version,
@@ -134,3 +147,16 @@ class IPv4Parser:
     @staticmethod
     def _format_ip(addr: bytes) -> str:
         return ".".join(str(b) for b in addr)
+
+    @staticmethod
+    def _ip_offset(packet: ParsedPacket):
+        if packet.eth_type == 0x0800:
+            return packet.network_offset or 14
+        if packet.eth_type:
+            return None
+        if not packet.raw_data:
+            return None
+        first = packet.raw_data[0]
+        if (first >> 4) == 4 and (first & 0x0F) >= 5:
+            return 0
+        return None

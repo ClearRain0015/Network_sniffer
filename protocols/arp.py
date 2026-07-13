@@ -34,7 +34,8 @@ class ARPParser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """以太网帧 EtherType == 0x0806 时为 ARP"""
-        return packet.eth_type == 0x0806 and len(packet.raw_data) >= 42
+        offset = packet.network_offset or 14
+        return packet.eth_type == 0x0806 and len(packet.raw_data) >= offset + 28
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -46,7 +47,8 @@ class ARPParser:
             opcode(2)  | sender_mac(6) | sender_ip(4) |
             target_mac(6) | target_ip(4) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        arp_offset = packet.network_offset or 14
+        raw = packet.raw_data[arp_offset:]  # 跳过以太网头
 
         if len(raw) < 28:
             return packet
@@ -66,6 +68,8 @@ class ARPParser:
         packet.proto_name = "ARP"
         packet.ip_src = sender_ip
         packet.ip_dst = target_ip
+        packet.transport_offset = 0
+        packet.set_payload(raw[28:], arp_offset + 28)
         packet.info = f"Who has {target_ip}? Tell {sender_ip}" if opcode == 1 else \
                       f"{sender_ip} is at {sender_mac}"
 

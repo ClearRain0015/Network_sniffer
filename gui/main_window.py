@@ -77,6 +77,8 @@ if _HAS_PYQT5:
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
+            self._raw_counter = 0
+            self._filtered_counter = 0
             self._reassembler = FragmentReassembler()
             self._build_ui()
 
@@ -178,12 +180,16 @@ if _HAS_PYQT5:
             iface_name = self._iface_names[idx] if idx >= 0 else None
             bpf = self.filter_input.text().strip()
             self._capture_counter = 0
+            self._raw_counter = 0
+            self._filtered_counter = 0
             self.packets.clear()
             self._pending_packets.clear()
             self.packet_table.clear()
 
             try:
-                self.sniff_thread = _SniffThread(iface_name, bpf)
+                # Keep capture broad and apply filters after parsing. On some
+                # Windows/Npcap setups driver-level BPF can drop valid ICMP.
+                self.sniff_thread = _SniffThread(iface_name, "")
                 self.sniff_thread.packet_received.connect(self._on_packet_arrived)
                 self.sniff_thread.start()
                 self.btn_start.setEnabled(False)
@@ -199,7 +205,9 @@ if _HAS_PYQT5:
                 self.sniff_thread = None
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
-            self.status_label.setText(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
+            self.status_label.setText(
+                f"已停止 — 收到 {self._raw_counter} 个，显示 {self._capture_counter} 个，过滤 {self._filtered_counter} 个"
+            )
 
         def _on_save(self):
             from save.pcap_save import save_packets
@@ -215,6 +223,8 @@ if _HAS_PYQT5:
             self.packet_table.clear()
             self.detail_panel.clear()
             self._capture_counter = 0
+            self._raw_counter = 0
+            self._filtered_counter = 0
             self.status_label.setText("已清空")
 
         def _on_filter_apply(self):
@@ -239,15 +249,22 @@ if _HAS_PYQT5:
                 batch = self._pending_packets[:]
                 self._pending_packets.clear()
             for packet in batch:
+                self._raw_counter += 1
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
                 if self.filter_input.text().strip():
                     if not BPFFilter.match(packet, self.filter_input.text().strip()):
+                        self._filtered_counter += 1
                         continue
                 self._capture_counter += 1
                 packet.no = self._capture_counter
                 self.packets.append(packet)
                 self.packet_table.add_packet(packet)
+            bpf = self.filter_input.text().strip()
+            self.status_label.setText(
+                f"监听中 — 收到 {self._raw_counter}，显示 {self._capture_counter}，过滤 {self._filtered_counter}"
+                + (f"，过滤器: {bpf}" if bpf else "")
+            )
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
@@ -377,7 +394,9 @@ else:
             self._tk_pending.clear()
             for item in self.tree.get_children():
                 self.tree.delete(item)
-            self.sniffer = Sniffer(iface_name, bpf)
+            # Keep capture broad and apply filters after parsing. On some
+            # Windows/Npcap setups driver-level BPF can drop valid ICMP.
+            self.sniffer = Sniffer(iface_name, "")
             self.sniffer.on_packet = self._on_tk_packet
             self._sniff_thread = threading.Thread(
                 target=self.sniffer.start, daemon=True)

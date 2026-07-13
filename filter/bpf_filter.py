@@ -75,11 +75,11 @@ class BPFFilter:
     def _match_proto(cls, packet: ParsedPacket, proto: str) -> bool:
         """匹配协议类型"""
         proto_map = {
-            "tcp": "TCP",
-            "udp": "UDP",
-            "icmp": "ICMP",
-            "arp": "ARP",
-            "ip": lambda p: p.proto_name in ("TCP", "UDP", "ICMP", "IPv4"),
+            "tcp": lambda p: p.ip_proto == 6 or p.proto_name == "TCP" or p.has_layer("TCP"),
+            "udp": lambda p: p.ip_proto == 17 or p.proto_name == "UDP" or p.has_layer("UDP"),
+            "icmp": lambda p: p.ip_proto == 1 or p.proto_name == "ICMP" or p.has_layer("ICMP"),
+            "arp": lambda p: p.eth_type == 0x0806 or p.proto_name == "ARP" or p.has_layer("ARP"),
+            "ip": lambda p: bool(p.ip_src or p.ip_dst or p.has_layer("IPv4")),
             "http": "HTTP",
             "dns": "DNS",
         }

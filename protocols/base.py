@@ -64,6 +64,14 @@ class ParsedPacket:
     tcp_seq: int = 0
     tcp_ack: int = 0
 
+    # Parsed byte offsets. These make upper-layer parsing and GUI highlighting
+    # independent from whether the capture starts at Ethernet or IPv4.
+    network_offset: int = 0
+    transport_offset: int = 0
+    payload_offset: int = 0
+    payload: bytes = b""
+    payload_text: str = ""
+
     # ── 摘要 ────────────────────────────────
     summary: str = ""                # 一行描述
     info: str = ""                   # 附加信息
@@ -110,3 +118,44 @@ class ParsedPacket:
 
     def has_layer(self, name: str) -> bool:
         return self.get_layer(name) is not None
+
+    def set_payload(self, payload: bytes, offset: int) -> None:
+        """Store the final application payload and its byte offset."""
+        self.payload = payload or b""
+        self.payload_offset = offset
+        self.payload_text = self.payload_to_text()
+
+    def payload_to_text(self, max_len: int = 2048) -> str:
+        """Return a readable payload preview with binary bytes made visible."""
+        if not self.payload:
+            return ""
+
+        sample = self.payload[:max_len]
+        text = sample.decode("utf-8", errors="replace")
+        if text.count("\ufffd") > max(2, len(text) // 8):
+            text = sample.decode("latin-1", errors="replace")
+
+        readable = []
+        for ch in text:
+            if ch in "\r\n\t" or (32 <= ord(ch) < 127):
+                readable.append(ch)
+            else:
+                readable.append(".")
+
+        suffix = ""
+        if len(self.payload) > max_len:
+            suffix = f"\n... truncated, {len(self.payload) - max_len} bytes more"
+        return "".join(readable) + suffix
+
+    @staticmethod
+    def hexdump(data: bytes, bytes_per_line: int = 16) -> str:
+        """Format bytes as offset, hex bytes and printable ASCII columns."""
+        lines = []
+        for offset in range(0, len(data), bytes_per_line):
+            chunk = data[offset:offset + bytes_per_line]
+            left = " ".join(f"{b:02x}" for b in chunk[:8])
+            right = " ".join(f"{b:02x}" for b in chunk[8:])
+            hex_part = f"{left:<23}  {right:<23}".rstrip()
+            ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+            lines.append(f"{offset:04x}  {hex_part:<48}  {ascii_part}")
+        return "\n".join(lines)

@@ -32,7 +32,7 @@ class ICMPParser:
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
         """IPv4 Protocol == 1"""
-        return packet.ip_proto == 1
+        return packet.ip_proto == 1 and packet.transport_offset > 0
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -42,10 +42,8 @@ class ICMPParser:
         ICMP 头部结构（8字节）:
           [ type(1) | code(1) | checksum(2) | rest_of_header(4) ]
         """
-        # 计算 IPv4 头部长度
-        raw = packet.raw_data[14:]  # 跳过以太网头
-        ihl = (raw[0] & 0x0F) * 4
-        icmp_offset = 14 + ihl
+        # 计算 ICMP 起始位置
+        icmp_offset = packet.transport_offset
         icmp_raw = packet.raw_data[icmp_offset:]
 
         if len(icmp_raw) < 8:
@@ -55,17 +53,32 @@ class ICMPParser:
         icmp_code = icmp_raw[1]
         icmp_checksum = struct.unpack("!H", icmp_raw[2:4])[0]
         rest_header = struct.unpack("!I", icmp_raw[4:8])[0]
+        identifier = struct.unpack("!H", icmp_raw[4:6])[0]
+        sequence = struct.unpack("!H", icmp_raw[6:8])[0]
+        payload_offset = icmp_offset + 8
+        ip_payload_end = min(
+            len(packet.raw_data),
+            packet.network_offset + packet.ip_len if packet.ip_len else len(packet.raw_data),
+        )
+        icmp_payload = packet.raw_data[payload_offset:ip_payload_end]
 
         type_desc = ICMPParser.TYPE_MAP.get(icmp_type, f"Unknown Type")
 
         packet.proto_name = "ICMP"
-        packet.info = f"{type_desc}  Code={icmp_code}"
+        packet.set_payload(icmp_payload, payload_offset)
+        packet.info = f"{type_desc}  Code={icmp_code} Payload={len(icmp_payload)}"
 
-        packet.add_layer("ICMP", {
+        fields = {
             "Type": f"{icmp_type} ({type_desc})",
             "Code": icmp_code,
             "Checksum": f"0x{icmp_checksum:04x}",
             "Rest of Header": f"0x{rest_header:08x}",
-        }, raw=icmp_raw[:8])
+            "Payload Length": len(icmp_payload),
+        }
+        if icmp_type in (0, 8):
+            fields["Identifier"] = identifier
+            fields["Sequence Number"] = sequence
+
+        packet.add_layer("ICMP", fields, raw=icmp_raw[:8])
 
         return packet

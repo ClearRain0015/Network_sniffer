@@ -63,16 +63,24 @@ class PacketTable:
         header.setStretchLastSection(True)
 
         tree.itemSelectionChanged.connect(self._on_selection_changed)
+        tree.itemClicked.connect(lambda *_: self._on_selection_changed())
 
         self._tree = tree
         self.widget = tree
 
     def _on_selection_changed(self):
         """PyQt5 选中行事件"""
+        from PyQt5.QtCore import Qt
+
         items = self._tree.selectedItems()
         if not items:
             return
         item = items[0]
+        packet = item.data(0, Qt.UserRole)
+        if packet is not None and self.on_select:
+            self.on_select(packet)
+            return
+
         idx = self._tree.indexOfTopLevelItem(item)
         if 0 <= idx < len(self._packets) and self.on_select:
             self.on_select(self._packets[idx])
@@ -126,11 +134,18 @@ class PacketTable:
         )
 
         if self.backend == "pyqt5":
+            from PyQt5.QtCore import Qt
             from PyQt5.QtWidgets import QTreeWidgetItem
+            had_selection = bool(self._tree.selectedItems())
             item = QTreeWidgetItem(list(row_data))
+            item.setData(0, Qt.UserRole, packet)
             self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
             # 自动滚动到底部
             self._tree.scrollToBottom()
+            if not had_selection:
+                self._tree.setCurrentItem(item)
+                if self.on_select:
+                    self.on_select(packet)
         else:
             self._tk_tree.insert("", "end", values=row_data)
             # Tkinter 自动滚动
