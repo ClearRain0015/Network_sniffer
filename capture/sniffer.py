@@ -21,7 +21,7 @@ import threading
 import time
 from typing import Optional, Callable
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 class Sniffer:

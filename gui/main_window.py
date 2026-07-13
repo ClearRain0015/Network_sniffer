@@ -17,8 +17,8 @@ from typing import List
 from .packet_table import PacketTable
 from .packet_detail import PacketDetailPanel
 from capture import Sniffer, list_interfaces
-from parser.base import ParsedPacket
-from parser.parser_chain import ParserChain
+from protocols.base import ParsedPacket
+from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
 

@@ -12,7 +12,7 @@ gui/packet_detail.py — 数据包详情面板
 
 from typing import Optional
 
-from parser.base import ParsedPacket, ProtocolLayer
+from protocols.base import ParsedPacket, ProtocolLayer
 
 
 class PacketDetailPanel:

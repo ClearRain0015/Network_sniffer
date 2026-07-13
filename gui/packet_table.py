@@ -11,7 +11,7 @@ gui/packet_table.py — 数据包列表组件
 
 from typing import Optional, Callable
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 class PacketTable:

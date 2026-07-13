@@ -18,7 +18,7 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 # 分片组 key: (src_ip, dst_ip, identification)

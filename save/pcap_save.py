@@ -13,7 +13,7 @@ import os
 import time
 from typing import List
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 # 默认保存目录

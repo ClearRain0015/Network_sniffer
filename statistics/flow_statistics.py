@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from typing import List, Dict
 import time
 
-from parser.base import ParsedPacket
+from protocols.base import ParsedPacket
 
 
 def compute_statistics(packets: List[ParsedPacket]) -> dict:
