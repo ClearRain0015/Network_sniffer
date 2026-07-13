@@ -90,12 +90,15 @@ class Sniffer:
         抓包主循环
         ---------
         优先使用 scapy.sniff 做持续性捕获；
-        scapy 不可用时，用原始 socket 兜底。
+        scapy 不可用/缺 Npcap 时，用原始 socket 兜底。
         """
         try:
             self._sniff_with_scapy()
-        except (ImportError, OSError) as e:
-            print(f"[!] scapy 抓包失败 ({e})，尝试 socket 兜底...")
+        except (ImportError, OSError, RuntimeError) as e:
+            print(f"[!] scapy 抓包失败: {e}")
+            print("[*] Windows 用户请安装 Npcap: https://npcap.com/dist/npcap-1.80.exe")
+            print("[*] 安装时勾选 'Install Npcap in WinPcap API-compatible Mode'")
+            print("[*] 现在尝试 socket 回退模式（需管理员权限）...")
             self._sniff_with_socket()
 
     def _sniff_with_scapy(self) -> None:
@@ -142,7 +145,7 @@ class Sniffer:
                 socket.SOCK_RAW,
                 socket.IPPROTO_IP,
             )
-            sock.bind((self.interface, 0))
+            sock.bind(("0.0.0.0", 0))
             sock.setsockopt(
                 socket.IPPROTO_IP,
                 socket.IP_HDRINCL,

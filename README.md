@@ -39,17 +39,25 @@ Sniffer/
 ### 安装
 
 ```bash
-# 完整安装（推荐）
+# 1. Python 依赖
 pip install -r requirements.txt
 
-# 最小安装（仅基础功能）
-pip install scapy
+# 2. Windows 用户建议安装 Npcap（可选但推荐）
+#    下载：https://npcap.com/dist/npcap-1.80.exe
+#    安装时勾选 "Install Npcap in WinPcap API-compatible Mode"
+#    macOS/Linux 自带 libpcap，无需额外安装
 ```
+
+> 没有 Npcap 也能用：程序会自动回退到 socket 模式抓 IP 层数据，但**必须管理员权限**。
 
 ### 运行
 
 ```bash
+# Windows：以管理员身份打开终端
 python main.py
+
+# macOS/Linux：
+sudo python main.py
 ```
 
 ## 界面布局
