@@ -2,3 +2,4 @@ scapy>=2.5.0
 PyQt5>=5.15.0
 dpkt>=1.9.8
 matplotlib>=3.7.0
+pytest>=7.0.0
