@@ -101,6 +101,123 @@ sudo python main.py
 pytest tests/ -v
 ```
 
+## 使用指南
+
+### 1. 抓包
+
+1. 以管理员身份运行 `python main.py`
+2. 顶部下拉框选择网卡（会显示网卡型号 + IP，活跃网卡自动排在前面）
+3. 点击 **开始抓包**，列表自动刷新
+4. 点击 **停止** 结束抓包
+
+> 抓包过程中可以正常浏览网页、ping 等，产生流量才能抓到包。
+
+### 2. 查看数据包
+
+点击列表中的任意一行，下方三个面板自动更新：
+
+**协议字段树**（左上方）
+
+抓包的 12 种协议逐层展开，每个字段都有键值对，例如：
+
+```
+▼ Ethernet
+    Destination MAC : aa:bb:cc:dd:ee:ff
+    Source MAC      : 11:22:33:44:55:66
+    EtherType       : 0x0800 (IPv4)
+▼ IPv4
+    Source IP       : 192.168.1.1
+    Destination IP  : 142.250.80.4
+    TTL             : 128
+    Protocol        : 6 (TCP)
+    Flags           : DF=1, MF=0
+    Fragment Offset : 0
+▼ TCP
+    Source Port     : 54321
+    Destination Port: 443 (HTTPS)
+    Sequence Number : 1234567890
+    Flags           : [SYN · ACK]
+    Window Size     : 65535
+```
+
+**十六进制面板**（左下方）
+
+Wireshark 风格显示，左边十六进制右边 ASCII 对照：
+
+```
+0000  aa bb cc dd ee ff 11 22  33 44 55 66 08 00 45 00   ........"3DUf..E.
+0010  00 34 12 34 40 00 80 06  00 00 c0 a8 01 01 8e fa   .4.4@...........
+```
+
+**Payload 面板**（底部）
+
+显示应用层可读文本，例如 HTTP 请求：
+
+```
+GET / HTTP/1.1
+Host: www.baidu.com
+User-Agent: Mozilla/5.0 ...
+```
+
+### 3. 过滤（BPF）
+
+在顶部过滤框输入表达式，点 **应用**（或回车），列表仅显示匹配的包。
+
+**按协议：**
+
+| 输入 | 效果 |
+|------|------|
+| `tcp` | 只看 TCP |
+| `udp` | 只看 UDP |
+| `icmp` | 只看 ICMP（Ping） |
+| `arp` | 只看 ARP |
+| `ip` | 只看 IP 层以上 |
+| `http` | 只看 HTTP 请求/响应 |
+| `dns` | 只看 DNS 查询 |
+
+**按 IP/端口：**
+
+| 输入 | 效果 |
+|------|------|
+| `host 192.168.1.1` | 源或目的 IP 包含 192.168.1.1 |
+| `port 80` | 源或目的端口为 80 |
+| `port 443` | 源或目的端口为 443 |
+| `tcp port 80` | TCP 且端口 80（HTTP 流量） |
+| `udp port 53` | UDP 且端口 53（DNS 流量） |
+
+清空过滤框点应用即可恢复显示全部。
+
+### 4. 保存数据
+
+点击 **保存PCAP** 按钮，数据包以 PCAP 格式保存到 `captures/` 目录，Wireshark 可直接打开。
+
+也可以通过代码导出 TXT/CSV：
+
+```python
+from save.pcap_save import save_as_txt, save_as_csv
+save_as_txt(packets, "output.txt")   # 可读文本
+save_as_csv(packets, "output.csv")   # Excel 可打开
+```
+
+### 5. 流量统计
+
+点击 **统计** 按钮弹出统计报告，包含：
+
+- 总数据包数 / 总字节数
+- 捕获时长 / 平均速率 (pps)
+- 协议分布
+- Top 10 源/目的 IP
+- Top 10 端口
+- 包大小分布
+
+也可以通过代码生成饼图：
+
+```python
+from statistics.flow_statistics import compute_statistics, plot_protocol_distribution
+stats = compute_statistics(packets)
+plot_protocol_distribution(stats)  # 弹出 Matplotlib 图表窗口
+```
+
 ## 界面布局
 
 ```
