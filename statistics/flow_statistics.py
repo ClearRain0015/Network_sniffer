@@ -69,6 +69,7 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
         "top_src_ports": src_port_counter.most_common(10),
         "top_dst_ports": dst_port_counter.most_common(10),
         "size_buckets": size_buckets,
+        "traffic_trend": compute_traffic_trend(packets),
     }
 
 
@@ -160,3 +161,64 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
     else:
         plt.show()
+
+
+def compute_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1) -> List[dict]:
+    """Group packets into time buckets for trend charts."""
+    if not packets:
+        return []
+    if bucket_seconds <= 0:
+        raise ValueError("bucket_seconds must be positive")
+
+    start = packets[0].timestamp
+    buckets = {}
+    for packet in packets:
+        bucket_index = int((packet.timestamp - start) // bucket_seconds)
+        bucket = buckets.setdefault(bucket_index, {
+            "time": bucket_index * bucket_seconds,
+            "packets": 0,
+            "bytes": 0,
+        })
+        bucket["packets"] += 1
+        bucket["bytes"] += packet.length
+
+    return [buckets[i] for i in sorted(buckets)]
+
+
+def plot_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1,
+                       save_path: str = None) -> bool:
+    """Plot packet and byte trends over time."""
+    trend = compute_traffic_trend(packets, bucket_seconds)
+    if not trend:
+        return False
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib is required for plotting")
+        return False
+
+    times = [item["time"] for item in trend]
+    packet_counts = [item["packets"] for item in trend]
+    byte_counts = [item["bytes"] for item in trend]
+
+    fig, ax_packets = plt.subplots()
+    ax_packets.plot(times, packet_counts, marker="o", color="#2563eb", label="Packets/s")
+    ax_packets.set_xlabel("Time (s)")
+    ax_packets.set_ylabel("Packets", color="#2563eb")
+    ax_packets.tick_params(axis="y", labelcolor="#2563eb")
+
+    ax_bytes = ax_packets.twinx()
+    ax_bytes.plot(times, byte_counts, marker="s", color="#dc2626", label="Bytes/s")
+    ax_bytes.set_ylabel("Bytes", color="#dc2626")
+    ax_bytes.tick_params(axis="y", labelcolor="#dc2626")
+
+    ax_packets.set_title("Traffic Trend")
+    ax_packets.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    fig.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    else:
+        plt.show()
+    return True

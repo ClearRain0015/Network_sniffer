@@ -9,7 +9,12 @@ from protocols.base import ParsedPacket
 from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from save.pcap_save import save_as_pcap
-from statistics.flow_statistics import compute_statistics, format_statistics
+from statistics.alerts import SynFloodDetector, detect_syn_alerts
+from statistics.flow_statistics import (
+    compute_statistics,
+    compute_traffic_trend,
+    format_statistics,
+)
 
 
 def ethernet(payload: bytes, ethertype: int = 0x0800) -> bytes:
@@ -103,7 +108,38 @@ class AdvancedFeatureTests(unittest.TestCase):
         self.assertIn("TCP", stats["protocol_dist"])
         self.assertIn("UDP", stats["protocol_dist"])
         self.assertIn(("8.8.8.8", 2), stats["top_dst_ips"])
+        self.assertIn("traffic_trend", stats)
         self.assertIn("协议分布", report)
+
+    def test_traffic_trend_groups_packets_by_second(self):
+        packet1 = parse(ethernet(ipv4_fragment(b"a", proto=1, ident=10, flags=0, offset=0)))
+        packet2 = parse(ethernet(ipv4_fragment(b"bb", proto=1, ident=11, flags=0, offset=0)))
+        packet3 = parse(ethernet(ipv4_fragment(b"ccc", proto=1, ident=12, flags=0, offset=0)))
+        packet1.timestamp = 100.0
+        packet2.timestamp = 100.5
+        packet3.timestamp = 101.2
+
+        trend = compute_traffic_trend([packet1, packet2, packet3], bucket_seconds=1)
+
+        self.assertEqual(trend[0]["packets"], 2)
+        self.assertEqual(trend[1]["packets"], 1)
+        self.assertEqual(trend[0]["bytes"], packet1.length + packet2.length)
+
+    def test_syn_detector_reports_many_initial_syn_packets(self):
+        detector = SynFloodDetector(threshold=3, window_seconds=2)
+        packets = []
+        for idx in range(3):
+            syn = struct.pack("!HHIIHHHH", 40000 + idx, 80, idx, 0, (5 << 12) | 0x02, 1, 0, 0)
+            packet = parse(ethernet(ipv4_fragment(syn, proto=6, ident=20 + idx, flags=0, offset=0)))
+            packet.timestamp = 200.0 + idx * 0.5
+            packets.append(packet)
+
+        alerts = [detector.observe(packet) for packet in packets]
+
+        self.assertIsNone(alerts[0])
+        self.assertIsNone(alerts[1])
+        self.assertIn("SYN 告警", alerts[2])
+        self.assertTrue(detect_syn_alerts(packets, threshold=3, window_seconds=2))
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ from protocols.base import ParsedPacket
 from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
+from statistics.alerts import SynFloodDetector, detect_syn_alerts
 
 # ── 检测 PyQt5 是否可用 ────────────────────
 _HAS_PYQT5 = False
@@ -81,6 +82,8 @@ if _HAS_PYQT5:
             self._raw_counter = 0
             self._filtered_counter = 0
             self._reassembler = FragmentReassembler()
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
             self._build_ui()
 
             self._pending_packets: List[ParsedPacket] = []
@@ -139,6 +142,14 @@ if _HAS_PYQT5:
             self.btn_stats.clicked.connect(self._on_show_stats)
             tl.addWidget(self.btn_stats)
 
+            self.btn_trend = QPushButton("趋势图")
+            self.btn_trend.clicked.connect(self._on_show_trend)
+            tl.addWidget(self.btn_trend)
+
+            self.btn_alerts = QPushButton("告警")
+            self.btn_alerts.clicked.connect(self._on_show_alerts)
+            tl.addWidget(self.btn_alerts)
+
             # 中央区域
             splitter = QSplitter(Qt.Vertical)
 
@@ -183,6 +194,8 @@ if _HAS_PYQT5:
             self._capture_counter = 0
             self._raw_counter = 0
             self._filtered_counter = 0
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
             self.packets.clear()
             self._all_packets.clear()
             self._pending_packets.clear()
@@ -228,6 +241,8 @@ if _HAS_PYQT5:
             self._capture_counter = 0
             self._raw_counter = 0
             self._filtered_counter = 0
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
             self.status_label.setText("已清空")
 
         def _on_filter_apply(self):
@@ -240,6 +255,22 @@ if _HAS_PYQT5:
             from statistics.flow_statistics import compute_statistics, format_statistics
             stats = compute_statistics(self.packets)
             QMessageBox.information(self, "流量统计", format_statistics(stats))
+
+        def _on_show_trend(self):
+            from statistics.flow_statistics import plot_traffic_trend
+            if not self.packets:
+                QMessageBox.information(self, "提示", "没有数据包可绘制趋势图")
+                return
+            if not plot_traffic_trend(self.packets):
+                QMessageBox.information(self, "提示", "无法绘制趋势图，请确认已安装 matplotlib")
+
+        def _on_show_alerts(self):
+            alerts = detect_syn_alerts(self._all_packets)
+            if not alerts:
+                QMessageBox.information(self, "实时告警", "当前未检测到大量 SYN 包")
+                return
+            text = "\n".join(alerts[-10:])
+            QMessageBox.warning(self, "实时告警", text)
 
         def _on_packet_arrived(self, packet: ParsedPacket):
             with self._pending_lock:
@@ -258,6 +289,7 @@ if _HAS_PYQT5:
                 if packet is None:
                     continue
                 self._all_packets.append(packet)
+                self._check_realtime_alert(packet)
                 if self._packet_matches_current_filter(packet):
                     self._display_packet(packet)
                 else:
@@ -277,6 +309,15 @@ if _HAS_PYQT5:
             packet.no = self._capture_counter
             self.packets.append(packet)
             self.packet_table.add_packet(packet)
+
+        def _check_realtime_alert(self, packet: ParsedPacket):
+            alert = self._syn_detector.observe(packet)
+            if not alert:
+                return
+            self.status_label.setText(alert)
+            if packet.timestamp - self._last_alert_at >= 10:
+                self._last_alert_at = packet.timestamp
+                QMessageBox.warning(self, "实时告警", alert)
 
         def _rebuild_filtered_packets(self):
             self.packets.clear()
@@ -329,6 +370,8 @@ else:
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
             self._reassembler = FragmentReassembler()
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
 
             self._build_tk_ui()
 
@@ -369,6 +412,18 @@ else:
             self.btn_filter = self.tk.Button(
                 toolbar, text="应用", command=self._on_filter_apply_tk)
             self.btn_filter.pack(side=self.tk.LEFT, padx=2)
+
+            self.btn_stats = self.tk.Button(
+                toolbar, text="统计", command=self._on_show_stats_tk)
+            self.btn_stats.pack(side=self.tk.LEFT, padx=2)
+
+            self.btn_trend = self.tk.Button(
+                toolbar, text="趋势图", command=self._on_show_trend_tk)
+            self.btn_trend.pack(side=self.tk.LEFT, padx=2)
+
+            self.btn_alerts = self.tk.Button(
+                toolbar, text="告警", command=self._on_show_alerts_tk)
+            self.btn_alerts.pack(side=self.tk.LEFT, padx=2)
 
             # 包列表
             self.ttk.Separator(self.root, orient=self.tk.HORIZONTAL).pack(
@@ -418,6 +473,8 @@ else:
             iface_name = self._tk_iface_names[idx] if idx >= 0 else None
             bpf = self.filter_var.get().strip()
             self._capture_counter = 0
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
             self.packets.clear()
             self._tk_pending.clear()
             for item in self.tree.get_children():
@@ -455,6 +512,8 @@ else:
                 self.tree.delete(item)
             self.detail_panel.clear()
             self._capture_counter = 0
+            self._syn_detector = SynFloodDetector()
+            self._last_alert_at = 0.0
             self.status_var.set("已清空")
 
         def _on_filter_apply_tk(self):
@@ -462,6 +521,29 @@ else:
             if self.sniffer:
                 self.sniffer.set_filter(bpf)
             self.status_var.set(f"过滤器: {bpf if bpf else '(无)'}")
+
+        def _on_show_stats_tk(self):
+            from tkinter import messagebox
+            from statistics.flow_statistics import compute_statistics, format_statistics
+            stats = compute_statistics(self.packets)
+            messagebox.showinfo("流量统计", format_statistics(stats))
+
+        def _on_show_trend_tk(self):
+            from tkinter import messagebox
+            from statistics.flow_statistics import plot_traffic_trend
+            if not self.packets:
+                messagebox.showinfo("提示", "没有数据包可绘制趋势图")
+                return
+            if not plot_traffic_trend(self.packets):
+                messagebox.showinfo("提示", "无法绘制趋势图，请确认已安装 matplotlib")
+
+        def _on_show_alerts_tk(self):
+            from tkinter import messagebox
+            alerts = detect_syn_alerts(self.packets)
+            if not alerts:
+                messagebox.showinfo("实时告警", "当前未检测到大量 SYN 包")
+                return
+            messagebox.showwarning("实时告警", "\n".join(alerts[-10:]))
 
         def _on_tk_packet(self, packet: ParsedPacket):
             with self._tk_lock:
@@ -479,6 +561,7 @@ else:
                 packet = self._reassembler.process(packet)
                 if packet is None:
                     continue
+                self._check_tk_realtime_alert(packet)
                 bpf = self.filter_var.get().strip()
                 if bpf and not BPFFilter.match(packet, bpf):
                     continue
@@ -492,6 +575,16 @@ else:
                     packet.info or packet.summary,
                 ))
             self.root.after(100, self._tk_flush)
+
+        def _check_tk_realtime_alert(self, packet: ParsedPacket):
+            alert = self._syn_detector.observe(packet)
+            if not alert:
+                return
+            self.status_var.set(alert)
+            if packet.timestamp - self._last_alert_at >= 10:
+                self._last_alert_at = packet.timestamp
+                from tkinter import messagebox
+                messagebox.showwarning("实时告警", alert)
 
         def _on_tree_select_tk(self, event):
             selection = self.tree.selection()
