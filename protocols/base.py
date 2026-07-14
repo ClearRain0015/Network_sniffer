@@ -64,6 +64,9 @@ class ParsedPacket:
     tcp_seq: int = 0
     tcp_ack: int = 0
 
+    # ── 应用层 payload ──────────────────────
+    payload: bytes = b""             # 传输层头部之后的应用数据
+
     # ── 摘要 ────────────────────────────────
     summary: str = ""                # 一行描述
     info: str = ""                   # 附加信息
@@ -94,6 +97,16 @@ class ParsedPacket:
     @property
     def length_str(self) -> str:
         return str(self.length)
+
+    @property
+    def payload_str(self) -> str:
+        """尝试将 payload 解码为可读文本"""
+        if not self.payload:
+            return ""
+        try:
+            return self.payload.decode("utf-8", errors="replace")
+        except Exception:
+            return "(binary data)"
 
     def add_layer(self, name: str, fields: Dict[str, Any], raw: bytes = b"") -> ProtocolLayer:
         """向包中添加一个协议层"""

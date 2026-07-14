@@ -24,9 +24,13 @@ class InterfaceInfo:
     display: str       # GUI 显示名 "描述 (IP)"
 
 
-def _is_auto_ip(ip: str) -> bool:
-    """判断是否为自动配置的无效 IP（169.254.x.x）"""
-    return ip.startswith("169.254.") or ip.startswith("0.0.0.0")
+def _is_valid_ip(ip: str) -> bool:
+    """判断 IP 是否真实可用（排除 N/A、0.0.0.0、169.254.x.x）"""
+    if ip in ("N/A", "0.0.0.0"):
+        return False
+    if ip.startswith("169.254."):
+        return False
+    return True
 
 
 def list_interfaces() -> List[InterfaceInfo]:
@@ -70,8 +74,8 @@ def list_interfaces() -> List[InterfaceInfo]:
         # 排序：有真实 IP 的排前面
         if interfaces:
             interfaces.sort(key=lambda i: (
-                _is_auto_ip(i.ip),   # 自动 IP 排后面
-                i.is_loopback,        # 回环排后面
+                not _is_valid_ip(i.ip),  # 无效 IP 排后面
+                i.is_loopback,            # 回环排后面
             ))
 
         if interfaces:

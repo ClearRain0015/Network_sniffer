@@ -19,11 +19,13 @@ from .base import ParsedPacket, ProtocolLayer
 from .ethernet import EthernetParser
 from .arp import ARPParser
 from .ip import IPv4Parser
+from .ipv6 import IPv6Parser
 from .tcp import TCPParser
 from .udp import UDPParser
 from .icmp import ICMPParser
 from .http import HTTPParser
 from .dns import DNSParser
+from .dhcp import DHCPParser
 from .parser_chain import ParserChain
 
 __all__ = [
@@ -32,10 +34,12 @@ __all__ = [
     "EthernetParser",
     "ARPParser",
     "IPv4Parser",
+    "IPv6Parser",
     "TCPParser",
     "UDPParser",
     "ICMPParser",
     "HTTPParser",
     "DNSParser",
+    "DHCPParser",
     "ParserChain",
 ]

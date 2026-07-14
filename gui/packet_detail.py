@@ -61,8 +61,16 @@ class PacketDetailPanel:
         )
         widget.addWidget(self._hex_view)
 
+        # 底部：Payload 可读文本
+        self._payload_view = QTextEdit()
+        self._payload_view.setReadOnly(True)
+        self._payload_view.setFont(QFont("Consolas, Courier New", 10))
+        self._payload_view.setPlaceholderText("(无应用层数据)")
+        widget.addWidget(self._payload_view)
+
         widget.setStretchFactor(0, 2)
         widget.setStretchFactor(1, 1)
+        widget.setStretchFactor(2, 1)
         self.widget = widget
 
     # ── Tkinter 实现 ──────────────────────
@@ -94,6 +102,13 @@ class PacketDetailPanel:
                                bg="#1e1e1e", fg="#d4d4d4")
         self._tk_hex.pack(fill=tk.BOTH, expand=True)
 
+        # 底部：Payload 可读文本
+        payload_frame = ttk.LabelFrame(frame, text="Payload (可读文本)")
+        payload_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
+
+        self._tk_payload = tk.Text(payload_frame, height=6, font=("Consolas", 10))
+        self._tk_payload.pack(fill=tk.BOTH, expand=True)
+
         self.widget = frame
 
     # ── 公共方法 ──────────────────────────
@@ -102,16 +117,19 @@ class PacketDetailPanel:
         """显示数据包完整信息"""
         self._show_protocol_tree(packet)
         self._show_hex_dump(packet)
+        self._show_payload(packet)
 
     def clear(self):
         """清空面板"""
         if self.backend == "pyqt5":
             self._proto_tree.clear()
             self._hex_view.clear()
+            self._payload_view.clear()
         else:
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
             self._tk_hex.delete("1.0", "end")
+            self._tk_payload.delete("1.0", "end")
 
     # ── 协议树 ────────────────────────────
 
@@ -192,3 +210,14 @@ class PacketDetailPanel:
         else:
             self._tk_hex.delete("1.0", "end")
             self._tk_hex.insert("1.0", text)
+
+    # ── Payload 可读文本 ────────────────────
+
+    def _show_payload(self, packet: ParsedPacket):
+        """显示应用层 payload 的可读文本"""
+        text = packet.payload_str if packet.payload_str else "(无应用层数据)"
+        if self.backend == "pyqt5":
+            self._payload_view.setPlainText(text)
+        else:
+            self._tk_payload.delete("1.0", "end")
+            self._tk_payload.insert("1.0", text)
