@@ -236,11 +236,14 @@ if _HAS_PYQT5:
             with self._pending_lock:
                 if not self._pending_packets:
                     return
-                batch = self._pending_packets[:]
-                self._pending_packets.clear()
+                # 每次最多处理 50 个包，防止 UI 卡顿
+                batch = self._pending_packets[:50]
+                self._pending_packets = self._pending_packets[50:]
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
+                if packet is None:
+                    continue  # 分片未到齐，等待后续
                 if self.filter_input.text().strip():
                     if not BPFFilter.match(packet, self.filter_input.text().strip()):
                         continue
@@ -423,13 +426,15 @@ else:
         def _tk_flush(self):
             with self._tk_lock:
                 if self._tk_pending:
-                    batch = self._tk_pending[:]
-                    self._tk_pending.clear()
+                    batch = self._tk_pending[:50]
+                    self._tk_pending = self._tk_pending[50:]
                 else:
                     batch = []
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
+                if packet is None:
+                    continue  # 分片未到齐，等待后续
                 bpf = self.filter_var.get().strip()
                 if bpf and not BPFFilter.match(packet, bpf):
                     continue
