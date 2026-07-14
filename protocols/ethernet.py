@@ -37,8 +37,16 @@ class EthernetParser:
 
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
-        """判断是否能解析以太网帧（长度至少 14 字节）"""
-        return len(packet.raw_data) >= 14
+        """判断是否能解析以太网帧（长度 >= 14 且首字节不是 IP 头）"""
+        if len(packet.raw_data) < 14:
+            return False
+        # 如果第一个字节看起来像 IPv4 (0x4x) 或 IPv6 (0x6x) 头，
+        # 说明没有以太网封装，跳过
+        first_nibble = (packet.raw_data[0] >> 4) & 0x0F
+        if first_nibble in (4, 6):
+            return False
+        et = struct.unpack("!H", packet.raw_data[12:14])[0]
+        return et in EthernetParser.ETHERTYPE_MAP or et >= 0x0600
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:

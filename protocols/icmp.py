@@ -43,9 +43,9 @@ class ICMPParser:
           [ type(1) | code(1) | checksum(2) | rest_of_header(4) ]
         """
         # 计算 IPv4 头部长度
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        raw = packet.raw_data[packet._ip_offset:]  # 跳到 IP 头
         ihl = (raw[0] & 0x0F) * 4
-        icmp_offset = 14 + ihl
+        icmp_offset = packet._ip_offset + ihl
         icmp_raw = packet.raw_data[icmp_offset:]
 
         if len(icmp_raw) < 8:
@@ -57,15 +57,21 @@ class ICMPParser:
         rest_header = struct.unpack("!I", icmp_raw[4:8])[0]
 
         type_desc = ICMPParser.TYPE_MAP.get(icmp_type, f"Unknown Type")
+        identifier = (rest_header >> 16) & 0xFFFF
+        seq_num = rest_header & 0xFFFF
 
         packet.proto_name = "ICMP"
         packet.info = f"{type_desc}  Code={icmp_code}"
+
+        # 提取 ICMP 头部之后的 payload
+        packet.payload = icmp_raw[8:]
 
         packet.add_layer("ICMP", {
             "Type": f"{icmp_type} ({type_desc})",
             "Code": icmp_code,
             "Checksum": f"0x{icmp_checksum:04x}",
-            "Rest of Header": f"0x{rest_header:08x}",
+            "Identifier": f"0x{identifier:04x} ({identifier})",
+            "Sequence Number": seq_num,
         }, raw=icmp_raw[:8])
 
         return packet

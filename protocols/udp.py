@@ -38,9 +38,9 @@ class UDPParser:
         UDP 头部结构（8字节）:
           [ src_port(2) | dst_port(2) | length(2) | checksum(2) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        raw = packet.raw_data[packet._ip_offset:]  # 跳到 IP 头
         ip_ihl = (raw[0] & 0x0F) * 4
-        udp_offset = 14 + ip_ihl
+        udp_offset = packet._ip_offset + ip_ihl
         udp_raw = packet.raw_data[udp_offset:]
 
         if len(udp_raw) < 8:

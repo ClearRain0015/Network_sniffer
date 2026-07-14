@@ -50,9 +50,9 @@ class TCPParser:
             offset_reserved_flags(2) | window(2) |
             checksum(2) | urgent_ptr(2) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        raw = packet.raw_data[packet._ip_offset:]  # 跳到 IP 头
         ip_ihl = (raw[0] & 0x0F) * 4
-        tcp_offset = 14 + ip_ihl
+        tcp_offset = packet._ip_offset + ip_ihl
         tcp_raw = packet.raw_data[tcp_offset:]
 
         if len(tcp_raw) < 20:

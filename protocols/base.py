@@ -64,6 +64,14 @@ class ParsedPacket:
     tcp_seq: int = 0
     tcp_ack: int = 0
 
+    # ── 内部偏移 ────────────────────────────
+    _ip_offset: int = 14  # IP 头在 raw_data 中的起始位置（默认14=以太网头后）
+
+    @property
+    def network_offset(self) -> int:
+        """_ip_offset 的公开别名（兼容测试）"""
+        return self._ip_offset
+
     # ── 应用层 payload ──────────────────────
     payload: bytes = b""             # 传输层头部之后的应用数据
 
@@ -107,6 +115,11 @@ class ParsedPacket:
             return self.payload.decode("utf-8", errors="replace")
         except Exception:
             return "(binary data)"
+
+    @property
+    def payload_text(self) -> str:
+        """payload_str 的别名（兼容旧版）"""
+        return self.payload_str
 
     def add_layer(self, name: str, fields: Dict[str, Any], raw: bytes = b"") -> ProtocolLayer:
         """向包中添加一个协议层"""

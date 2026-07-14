@@ -46,7 +46,8 @@ class _FragmentGroup:
         if not mf_flag and packet.ip_frag > 0:
             # MF=0 且 offset>0 → 这是最后一个分片
             self.has_last = True
-            self.total_len = packet.ip_frag * 8 + packet.ip_len
+            # total = offset*8 + payload长度（ip_len 减去 IP 头 20 字节）
+            self.total_len = packet.ip_frag * 8 + (packet.ip_len - 20)
 
     def is_complete(self) -> bool:
         """
@@ -197,7 +198,12 @@ class FragmentReassembler:
         if group.is_complete():
             del self._table[key]
             self._completed_count += 1
-            return group.reassemble()
+            result = group.reassemble()
+            if result:
+                # 重新解析重组后的包，让传输层提取 payload
+                from protocols.parser_chain import ParserChain
+                result = ParserChain.parse(result)
+            return result
 
         # 还在等待其他分片
         return None  # 暂不显示

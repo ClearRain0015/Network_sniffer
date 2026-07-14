@@ -42,8 +42,11 @@ class IPv4Parser:
 
     @staticmethod
     def can_parse(packet: ParsedPacket) -> bool:
-        """以太网 EtherType == 0x0800（IPv4）"""
-        return packet.eth_type == 0x0800 and len(packet.raw_data) >= 34
+        """以太网 EtherType == 0x0800，或纯 IPv4 报文（首半字节 == 4）"""
+        if packet.eth_type == 0x0800 and len(packet.raw_data) >= 34:
+            return True
+        first_nibble = (packet.raw_data[0] >> 4) & 0x0F
+        return first_nibble == 4 and len(packet.raw_data) >= 20
 
     @staticmethod
     def parse(packet: ParsedPacket) -> ParsedPacket:
@@ -56,7 +59,13 @@ class IPv4Parser:
             ttl(1) | proto(1) | checksum(2) |
             src_ip(4) | dst_ip(4) ]
         """
-        raw = packet.raw_data[14:]  # 跳过以太网头
+        # 如有以太网头则跳过（EtherType=0x0800），否则从头开始解析
+        if packet.eth_type == 0x0800 and len(packet.raw_data) >= 14:
+            offset = 14
+        else:
+            offset = 0
+        packet._ip_offset = offset
+        raw = packet.raw_data[offset:]
 
         if len(raw) < 20:
             return packet
