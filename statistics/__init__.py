@@ -8,6 +8,21 @@ statistics/ — 流量统计模块
   - 可选：流量趋势图（Matplotlib）
 """
 
-from .flow_statistics import compute_statistics, format_statistics
+from .flow_statistics import (
+    compute_statistics,
+    compute_traffic_trend,
+    format_statistics,
+    plot_protocol_distribution,
+    plot_traffic_trend,
+)
+from .alerts import SynFloodDetector, detect_syn_alerts
 
-__all__ = ["compute_statistics", "format_statistics"]
+__all__ = [
+    "compute_statistics",
+    "compute_traffic_trend",
+    "format_statistics",
+    "plot_protocol_distribution",
+    "plot_traffic_trend",
+    "SynFloodDetector",
+    "detect_syn_alerts",
+]

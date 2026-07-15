@@ -38,6 +38,7 @@ class Sniffer:
     def __init__(self, interface: str = "eth0", bpf_filter: str = ""):
         self.interface = interface
         self.bpf_filter = bpf_filter
+        self.print_packets = True
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._packet_count = 0
@@ -116,6 +117,7 @@ class Sniffer:
 
             # 解析为 ParsedPacket 并回调
             parsed = self._scapy_to_parsed(pkt, self._packet_count)
+            self._print_packet_summary(parsed)
             if self.on_packet and parsed:
                 self.on_packet(parsed)
 
@@ -167,7 +169,10 @@ class Sniffer:
                         timestamp=time.time(),
                         raw_data=raw,
                         length=len(raw),
+                        proto_name="IPv4",
+                        summary=f"Raw IPv4 packet len={len(raw)}",
                     )
+                    self._print_packet_summary(parsed)
                     if self.on_packet:
                         self.on_packet(parsed)
                 except socket.timeout:
@@ -248,6 +253,20 @@ class Sniffer:
         # 简要信息摘要
         parsed.summary = pkt.summary() if hasattr(pkt, "summary") else ""
         return parsed
+
+    def _print_packet_summary(self, packet: ParsedPacket) -> None:
+        """Print one-line packet information for terminal-mode verification."""
+        if not self.print_packets:
+            return
+        info = packet.info or packet.summary
+        if len(info) > 100:
+            info = info[:97] + "..."
+        print(
+            f"[{packet.no:05d}] {packet.timestamp_str} "
+            f"{packet.src_str} -> {packet.dst_str} "
+            f"{packet.proto_name or 'Other'} len={packet.length} {info}",
+            flush=True,
+        )
 
 
 class SniffWorker:
