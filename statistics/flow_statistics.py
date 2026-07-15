@@ -187,3 +187,41 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
     else:
         plt.show()
+
+
+# ── 流量趋势 ──────────────────────────────
+
+def compute_traffic_trend(packets, interval: float = 1.0) -> list:
+    """计算按时间分桶的流量趋势（每秒包数）"""
+    if not packets:
+        return []
+    start = packets[0].timestamp
+    buckets = {}
+    for p in packets:
+        bucket = int((p.timestamp - start) / interval)
+        buckets[bucket] = buckets.get(bucket, 0) + 1
+    max_bucket = max(buckets.keys())
+    return [(i * interval, buckets.get(i, 0)) for i in range(max_bucket + 1)]
+
+
+def plot_traffic_trend(trend: list, save_path: str = None):
+    """绘制流量趋势折线图"""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[!] 需要安装 matplotlib: pip install matplotlib")
+        return
+    if not trend:
+        return
+    x = [t[0] for t in trend]
+    y = [t[1] for t in trend]
+    plt.figure(figsize=(10, 4))
+    plt.plot(x, y, marker="o", markersize=2, linewidth=1)
+    plt.xlabel("时间 (秒)")
+    plt.ylabel("数据包数")
+    plt.title("流量趋势")
+    plt.grid(True, alpha=0.3)
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    else:
+        plt.show()
