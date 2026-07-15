@@ -56,6 +56,12 @@ class SynFloodDetector:
 
 def detect_syn_alerts(packets, threshold: int = 100,
                        window_seconds: float = None) -> list:
+    # 检查全量历史包时用超大窗口
+    if window_seconds is None and packets:
+        window_seconds = max(
+            (p.timestamp for p in packets),
+            default=1.0,
+        ) - min((p.timestamp for p in packets), default=0.0) + 10
     detector = SynFloodDetector(threshold=threshold,
                                 window_seconds=window_seconds)
     for packet in packets:

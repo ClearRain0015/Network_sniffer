@@ -23,6 +23,11 @@ from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
 from statistics.alerts import SynFloodDetector, detect_syn_alerts
 
+# ═══════════════════════════════════════════════════════════
+#  全局配置（修改这里即可调整参数）
+# ═══════════════════════════════════════════════════════════
+SYNDetection_THRESHOLD = 5  # SYN 告警阈值（测试用5，改为100恢复默认）
+
 # ── 检测 PyQt5 是否可用 ────────────────────
 _HAS_PYQT5 = False
 try:
@@ -78,6 +83,7 @@ if _HAS_PYQT5:
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
+            self._auto_alerted = False
             self._reassembler = FragmentReassembler()
             self._syn_detector = SynFloodDetector()
             self._last_alert_at = 0.0
@@ -256,9 +262,20 @@ if _HAS_PYQT5:
                 QMessageBox.information(self, "提示", "无法绘制趋势图，请确认已安装 matplotlib")
 
         def _on_show_alerts(self):
-            alerts = detect_syn_alerts(self.packets)
+            # 统计 SYN 包信息（调试用）
+            syn_count = sum(
+                1 for p in self.packets
+                if p.proto_name == "TCP" and (p.tcp_flags & 0x02)
+            )
+            alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
             if not alerts:
-                QMessageBox.information(self, "实时告警", "当前未检测到大量 SYN 包")
+                QMessageBox.information(
+                    self, "实时告警",
+                    f"当前未检测到大量 SYN 包\n"
+                    f"（总包数: {len(self.packets)}, "
+                    f"SYN包: {syn_count}, "
+                    f"阈值: {SYNDetection_THRESHOLD}）"
+                )
                 return
             text = "\n".join(alerts[-10:])
             QMessageBox.warning(self, "实时告警", text)
@@ -286,6 +303,17 @@ if _HAS_PYQT5:
                 packet.no = self._capture_counter
                 self.packets.append(packet)
                 self.packet_table.add_packet(packet)
+
+            # ── 自动告警：检测到 SYN 洪水就弹窗 ──
+            alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
+            if alerts and not self._auto_alerted:
+                self._auto_alerted = True
+                QMessageBox.warning(
+                    self, "实时告警 - 自动检测",
+                    "\n".join(alerts[-5:])
+                )
+            elif not alerts:
+                self._auto_alerted = False  # 解除锁定，允许下次报警
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
@@ -492,9 +520,19 @@ else:
 
         def _on_show_alerts_tk(self):
             from tkinter import messagebox
-            alerts = detect_syn_alerts(self.packets)
+            alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
+            syn_count = sum(
+                1 for p in self.packets
+                if p.proto_name == "TCP" and (p.tcp_flags & 0x02)
+            )
             if not alerts:
-                messagebox.showinfo("实时告警", "当前未检测到大量 SYN 包")
+                messagebox.showinfo(
+                    "实时告警",
+                    f"当前未检测到大量 SYN 包\n"
+                    f"（总包数: {len(self.packets)}, "
+                    f"SYN包: {syn_count}, "
+                    f"阈值: {SYNDetection_THRESHOLD}）"
+                )
                 return
             messagebox.showwarning("实时告警", "\n".join(alerts[-10:]))
 
