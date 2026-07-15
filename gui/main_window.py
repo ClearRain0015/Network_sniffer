@@ -277,7 +277,7 @@ if _HAS_PYQT5:
                     f"阈值: {SYNDetection_THRESHOLD}）"
                 )
                 return
-            text = "\n".join(alerts[-10:])
+            text = "\n".join(a[2] for a in alerts[-10:])
             QMessageBox.warning(self, "实时告警", text)
 
         def _on_packet_arrived(self, packet: ParsedPacket):
@@ -308,9 +308,9 @@ if _HAS_PYQT5:
             alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
             if alerts and not self._auto_alerted:
                 self._auto_alerted = True
+                msg = "\n".join(a[2] for a in alerts[-5:]) if alerts else ""
                 QMessageBox.warning(
-                    self, "实时告警 - 自动检测",
-                    "\n".join(alerts[-5:])
+                    self, "实时告警 - 自动检测", msg
                 )
             elif not alerts:
                 self._auto_alerted = False  # 解除锁定，允许下次报警
