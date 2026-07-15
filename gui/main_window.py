@@ -225,12 +225,19 @@ if _HAS_PYQT5:
             )
 
         def _on_save(self):
+            from PyQt5.QtWidgets import QFileDialog
             from save.pcap_save import save_packets
             if not self.packets:
                 QMessageBox.information(self, "提示", "没有数据包可保存")
                 return
-            path = save_packets(self.packets)
-            self.status_label.setText(f"已保存到 {path}")
+            path, _ = QFileDialog.getSaveFileName(
+                self, "保存 PCAP 文件", "capture.pcap",
+                "PCAP 文件 (*.pcap);;所有文件 (*)",
+            )
+            if not path:
+                return
+            saved = save_packets(self.packets, path)
+            self.status_label.setText(f"已保存到 {saved}")
 
         def _on_clear(self):
             self.packets.clear()
@@ -252,9 +259,22 @@ if _HAS_PYQT5:
             self._rebuild_filtered_packets()
 
         def _on_show_stats(self):
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
             from statistics.flow_statistics import compute_statistics, format_statistics
             stats = compute_statistics(self.packets)
-            QMessageBox.information(self, "流量统计", format_statistics(stats))
+            text = format_statistics(stats)
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("流量统计")
+            dlg.resize(520, 480)
+            dlg.setMinimumSize(400, 300)
+            layout = QVBoxLayout(dlg)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setPlainText(text)
+            text_edit.setFont(QFont("Consolas, Courier New", 10))
+            layout.addWidget(text_edit)
+            dlg.exec_()
 
         def _on_show_trend(self):
             from statistics.flow_statistics import plot_traffic_trend
@@ -499,11 +519,19 @@ else:
             self.status_var.set(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
 
         def _on_save_tk(self):
+            from tkinter import filedialog
             from save.pcap_save import save_packets
             if not self.packets:
                 return
-            path = save_packets(self.packets)
-            self.status_var.set(f"已保存到 {path}")
+            path = filedialog.asksaveasfilename(
+                title="保存 PCAP 文件",
+                defaultextension=".pcap",
+                filetypes=[("PCAP 文件", "*.pcap"), ("所有文件", "*.*")],
+            )
+            if not path:
+                return
+            saved = save_packets(self.packets, path)
+            self.status_var.set(f"已保存到 {saved}")
 
         def _on_clear_tk(self):
             self.packets.clear()
@@ -523,10 +551,28 @@ else:
             self.status_var.set(f"过滤器: {bpf if bpf else '(无)'}")
 
         def _on_show_stats_tk(self):
-            from tkinter import messagebox
             from statistics.flow_statistics import compute_statistics, format_statistics
             stats = compute_statistics(self.packets)
-            messagebox.showinfo("流量统计", format_statistics(stats))
+            text = format_statistics(stats)
+
+            dlg = self.tk.Toplevel(self.root)
+            dlg.title("流量统计")
+            dlg.geometry("520x480")
+            dlg.minsize(400, 300)
+
+            text_widget = self.tk.Text(dlg, wrap=self.tk.NONE, font=("Consolas", 10))
+            scroll_y = self.ttk.Scrollbar(dlg, orient=self.tk.VERTICAL, command=text_widget.yview)
+            scroll_x = self.ttk.Scrollbar(dlg, orient=self.tk.HORIZONTAL, command=text_widget.xview)
+            text_widget.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+            text_widget.insert("1.0", text)
+            text_widget.configure(state=self.tk.DISABLED)
+
+            text_widget.grid(row=0, column=0, sticky="nsew")
+            scroll_y.grid(row=0, column=1, sticky="ns")
+            scroll_x.grid(row=1, column=0, sticky="ew")
+            dlg.grid_rowconfigure(0, weight=1)
+            dlg.grid_columnconfigure(0, weight=1)
 
         def _on_show_trend_tk(self):
             from tkinter import messagebox
