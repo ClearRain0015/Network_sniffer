@@ -74,8 +74,10 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
     return {
         "total_packets": len(packets),
         "total_bytes": total_bytes,
+        "avg_packet_size": total_bytes / len(packets),
         "duration": duration,
         "pps": len(packets) / duration,
+        "bps": total_bytes / duration,
         "protocol_dist": dict(proto_counter.most_common()),
         "top_src_ips": src_ip_counter.most_common(10),
         "top_dst_ips": dst_ip_counter.most_common(10),
@@ -240,3 +242,93 @@ def plot_traffic_trend(trend: list, save_path: str = None):
     else:
         plt.show()
     return True
+
+
+# ── HTML 统计报告 ──────────────────────────
+
+def _pct(count, total):
+    return f"{count/total*100:.1f}%" if total else "0%"
+
+
+def format_statistics_html(stats: dict, zoom: int = 100) -> str:
+    """Return the statistics report as styled HTML for rich display."""
+    z = zoom / 100
+    if stats.get("total_packets", 0) == 0:
+        return (f'<p style="color:#9aa0a6;text-align:center;'
+                f'padding:{int(48*z)}px;font-size:{int(15*z)}px;">暂无数据</p>')
+
+    total = stats["total_packets"]
+
+    def row(label, value, color="#202124"):
+        return (
+            f'<tr>'
+            f'<td style="padding:{int(5*z)}px {int(14*z)}px;color:#5f6368;'
+            f'font-size:{int(14*z)}px;">{label}</td>'
+            f'<td style="padding:{int(5*z)}px {int(14*z)}px;color:{color};'
+            f'font-weight:500;text-align:right;font-size:{int(14*z)}px;">{value}</td>'
+            f'</tr>'
+        )
+
+    def section(title, rows_html):
+        return (
+            f'<div style="margin-bottom:{int(20*z)}px;">'
+            f'<h3 style="color:#1a73e8;margin:0 0 {int(10*z)}px 0;'
+            f'padding:{int(6*z)}px 0;border-bottom:2px solid #1a73e8;'
+            f'font-size:{int(15*z)}px;font-weight:600;">{title}</h3>'
+            f'<table style="width:100%;border-collapse:collapse;">{rows_html}</table>'
+            f'</div>'
+        )
+
+    # 概览卡片
+    cards = (
+        f'<div style="display:flex;gap:{int(14*z)}px;margin-bottom:{int(22*z)}px;">'
+        f'<div style="flex:1;background:#e8f0fe;border-radius:{int(12*z)}px;'
+        f'padding:{int(18*z)}px;text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#1a73e8;">{total}</div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">数据包</div></div>'
+        f'<div style="flex:1;background:#e6f4ea;border-radius:{int(12*z)}px;'
+        f'padding:{int(18*z)}px;text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#1e8e3e;">{stats["total_bytes"]/1024:.1f} KB</div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">总流量</div></div>'
+        f'<div style="flex:1;background:#fef7e0;border-radius:{int(12*z)}px;'
+        f'padding:{int(18*z)}px;text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#f9ab00;">{stats["pps"]:.1f}</div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">包/秒</div></div>'
+        f'<div style="flex:1;background:#f3e8fd;border-radius:{int(12*z)}px;'
+        f'padding:{int(18*z)}px;text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#9334e6;">{stats["duration"]:.2f} s</div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">捕获时长</div></div>'
+        f'</div>'
+    )
+
+    html = f'<div style="font-family:Segoe UI,sans-serif;padding:4px;">{cards}'
+
+    # 概览表
+    overview = "".join([
+        row("平均包长", f'{stats["avg_packet_size"]:.1f} bytes'),
+        row("平均速率", f'{stats["bps"]:.1f} bytes/s'),
+    ])
+    html += section("概览", overview)
+
+    # 协议分布
+    proto_rows = "".join([
+        row(proto, f'{count} ({_pct(count, total)})')
+        for proto, count in stats.get("protocol_dist", {}).items()
+    ])
+    html += section("协议分布", proto_rows)
+
+    # Top IP
+    ip_rows = "".join([
+        row(ip, str(count)) for ip, count in stats.get("top_ips", [])
+    ])
+    html += section("Top IP", ip_rows)
+
+    # 包大小
+    size_rows = "".join([
+        row(bucket, f'{count} ({_pct(count, total)})')
+        for bucket, count in stats.get("size_buckets", {}).items()
+    ])
+    html += section("包大小分布", size_rows)
+
+    html += '</div>'
+    return html
