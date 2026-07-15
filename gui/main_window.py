@@ -78,7 +78,7 @@ if _HAS_PYQT5:
             super().__init__()
             self.backend = backend
             self.setWindowTitle("Sniffer — 网络数据包分析器")
-            self.resize(1280, 860)
+            self.resize(1410, 950)
             self.setMinimumSize(960, 600)
 
             self._zoom = 100  # 缩放百分比，100=默认
@@ -141,7 +141,7 @@ if _HAS_PYQT5:
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
             self.filter_input.setPlaceholderText("tcp, udp port 80, host 192.168.1.1 ...")
-            self.filter_input.setMinimumWidth(250)
+            self.filter_input.setMinimumWidth(190)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
 

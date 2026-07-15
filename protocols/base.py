@@ -108,13 +108,28 @@ class ParsedPacket:
 
     @property
     def payload_str(self) -> str:
-        """尝试将 payload 解码为可读文本"""
+        """尝试将 payload 解码为可读文本，二进制数据返回十六进制"""
         if not self.payload:
             return ""
+        # 超过 10% 非打印字符则为二进制数据，显示十六进制
+        printable = sum(1 for b in self.payload if 32 <= b < 127 or b in (9, 10, 13))
+        ratio = printable / len(self.payload)
+        if ratio < 0.9:
+            # 显示前 256 字节的十六进制
+            data = self.payload[:256]
+            lines = []
+            for i in range(0, len(data), 16):
+                chunk = data[i:i+16]
+                hex_part = " ".join(f"{b:02x}" for b in chunk)
+                ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+                lines.append(f"  {hex_part:<48} {ascii_part}")
+            if len(self.payload) > 256:
+                lines.append(f"  ... ({len(self.payload)} bytes total)")
+            return "\n".join(lines)
         try:
             return self.payload.decode("utf-8", errors="replace")
         except Exception:
-            return "(binary data)"
+            return "(decode error)"
 
     @property
     def payload_text(self) -> str:

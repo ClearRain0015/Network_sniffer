@@ -55,7 +55,7 @@ class PacketDetailPanel:
         # 下半：十六进制面板
         self._hex_view = QTextEdit()
         self._hex_view.setReadOnly(True)
-        self._hex_view.setFont(QFont("Consolas, Courier New", 10))
+        self._hex_view.setFont(QFont("Consolas", 11))
         self._hex_view.setStyleSheet(
             "QTextEdit { background-color: #fafbfc; color: #202124; "
             "border: 1px solid #dadce0; border-radius: 8px; "
@@ -66,7 +66,7 @@ class PacketDetailPanel:
         # 底部：Payload 可读文本
         self._payload_view = QTextEdit()
         self._payload_view.setReadOnly(True)
-        self._payload_view.setFont(QFont("Consolas, Courier New", 10))
+        self._payload_view.setFont(QFont("Consolas", 11))
         self._payload_view.setPlaceholderText("(无应用层数据)")
         widget.addWidget(self._payload_view)
 
