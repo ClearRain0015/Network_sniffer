@@ -193,10 +193,17 @@ if _HAS_PYQT5:
                 QMessageBox.critical(self, "错误", f"无法开始抓包:\n{e}")
 
         def _on_stop(self):
+            # 立即停止刷新，清空待处理队列
+            self._refresh_timer.stop()
+            with self._pending_lock:
+                self._pending_packets.clear()
             if self.sniff_thread:
                 self.sniff_thread.stop()
                 self.sniff_thread.wait(3000)
                 self.sniff_thread = None
+            # 处理剩余包后恢复
+            self._flush_packets()
+            self._refresh_timer.start(100)
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
             self.status_label.setText(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
@@ -393,6 +400,9 @@ else:
             if self.sniffer:
                 self.sniffer.stop()
                 self.sniffer = None
+            # 清空待处理队列
+            with self._tk_lock:
+                self._tk_pending.clear()
             self.btn_start.config(state=self.tk.NORMAL)
             self.btn_stop.config(state=self.tk.DISABLED)
             self.status_var.set(f"已停止 — 共捕获 {self._capture_counter} 个数据包")

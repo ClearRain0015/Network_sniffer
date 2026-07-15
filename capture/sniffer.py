@@ -74,10 +74,8 @@ class Sniffer:
         self._thread.start()
 
     def stop(self) -> None:
-        """停止抓包"""
+        """停止抓包（非阻塞，立即返回）"""
         self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3.0)
 
     def set_filter(self, bpf: str) -> None:
         """动态更新 BPF 过滤器"""
