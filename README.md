@@ -11,7 +11,8 @@
 - **BPF 过滤** — `tcp` / `udp port 80` / `host 192.168.1.1` / `tcp port 443` 等
 - **Payload 面板** — 显示应用层可读文本（HTTP 请求/响应、DNS 查询等）
 - **PCAP 保存** — `.pcap`（Wireshark 可打开）、TXT、CSV 三种格式
-- **流量统计** — 协议分布、Top IP/端口、包大小分布、pps 速率、饼图
+- **流量统计** — 协议分布、Top IP/端口、包大小分布、pps 速率、饼图、趋势折线图
+- **SYN 洪水告警** — 实时检测 SYN 攻击，自动/手动弹窗告警，阈值可配
 - **双 GUI 后端** — PyQt5（推荐，接近 Wireshark）+ Tkinter（回退）
 - **单元测试** — 协议解析 + 高级功能测试覆盖
 
@@ -210,12 +211,46 @@ save_as_csv(packets, "output.csv")   # Excel 可打开
 - Top 10 端口
 - 包大小分布
 
-也可以通过代码生成饼图：
+也可以通过代码生成饼图和趋势图：
 
 ```python
-from statistics.flow_statistics import compute_statistics, plot_protocol_distribution
+from statistics.flow_statistics import (
+    compute_statistics, plot_protocol_distribution,
+    compute_traffic_trend, plot_traffic_trend,
+)
+# 饼图
 stats = compute_statistics(packets)
-plot_protocol_distribution(stats)  # 弹出 Matplotlib 图表窗口
+plot_protocol_distribution(stats)
+
+# 流量趋势折线图（每秒包数）
+trend = compute_traffic_trend(packets, bucket_seconds=1)
+plot_traffic_trend(trend)
+```
+
+### 6. 流量趋势图
+
+点击工具栏 **趋势** 按钮，自动绘制按秒分桶的流量折线图。需要安装 matplotlib。
+
+### 7. SYN 洪水告警
+
+工具栏右侧有 **告警** 按钮，点击检测当前已捕获数据包中的 SYN 洪水。
+
+同时支持 **自动告警**：抓包过程中每批处理完自动检测，一旦有 IP 发送的 SYN 包超过阈值（默认 5，可在 `gui/main_window.py` 顶部 `SYNDetection_THRESHOLD` 修改），立即弹窗警告。
+
+```python
+from statistics.alerts import SynFloodDetector, detect_syn_alerts
+
+# 手动检测
+alerts = detect_syn_alerts(packets, threshold=5)
+for ip, count, msg in alerts:
+    print(msg)
+
+# 实时检测器
+detector = SynFloodDetector(threshold=5, window_seconds=2)
+for packet in packets:
+    alert = detector.observe(packet)
+    if alert:
+        print(alert)  # "SYN 告警: 192.168.1.1 发送大量 SYN 包"
 ```
 
 ## 界面布局
@@ -224,7 +259,7 @@ plot_protocol_distribution(stats)  # 弹出 Matplotlib 图表窗口
 ┌──────────────────────────────────────────────────────────┐
 │ 网卡: [Intel Wi-Fi 6E (10.181.61.240) ▼]                 │
 │ ▶ 开始抓包  ⏹ 停止  💾 保存PCAP  🗑 清空               │
-│ 过滤: [tcp port 80                  ]  [应用]  📊 统计    │
+│ 过滤: [tcp port 80  ] [应用]  📊 统计  📈 趋势  ⚠ 告警  │
 ├──────────────────────────────────────────────────────────┤
 │ No │ Time         │ Source         │ Dest   │ Proto      │
 │  1 │ 12:34:56.123 │ 192.168.1.1    │ 1.2.3.4│ TCP        │
@@ -275,7 +310,7 @@ Save Module（PCAP / TXT / CSV）
 | 二 | 协议解析：12 种协议全覆盖 | ✅ 完成 |
 | 三 | GUI：包列表 + 协议树 + 十六进制 + Payload 面板 | ✅ 完成 |
 | 四 | 高级功能：BPF 过滤、IP 分片重组、PCAP 保存、流量统计 | ✅ 完成 |
-| 五 | 扩展加分：HTTP/DNS/DHCP 解析、IPv6、流量图表、单元测试 | ✅ 完成 |
+| 五 | 扩展加分：HTTP/DNS/DHCP 解析、IPv6、趋势图、SYN告警、单元测试 | ✅ 完成 |
 
 ## 技术栈
 
