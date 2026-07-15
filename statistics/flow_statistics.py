@@ -82,6 +82,7 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
         "top_src_ports": src_port_counter.most_common(10),
         "top_dst_ports": dst_port_counter.most_common(10),
         "size_buckets": size_buckets,
+        "traffic_trend": compute_traffic_trend(packets),
     }
 
 
@@ -191,17 +192,30 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
 
 # ── 流量趋势 ──────────────────────────────
 
-def compute_traffic_trend(packets, interval: float = 1.0) -> list:
+def compute_traffic_trend(packets, interval: float = 1.0, bucket_seconds: float = None) -> list:
     """计算按时间分桶的流量趋势（每秒包数）"""
+    if bucket_seconds is not None:
+        interval = bucket_seconds
     if not packets:
         return []
     start = packets[0].timestamp
     buckets = {}
     for p in packets:
         bucket = int((p.timestamp - start) / interval)
-        buckets[bucket] = buckets.get(bucket, 0) + 1
-    max_bucket = max(buckets.keys())
-    return [(i * interval, buckets.get(i, 0)) for i in range(max_bucket + 1)]
+        if bucket not in buckets:
+            buckets[bucket] = {"packets": 0, "bytes": 0}
+        buckets[bucket]["packets"] += 1
+        buckets[bucket]["bytes"] += p.length
+    max_bucket = max(buckets.keys()) if buckets else -1
+    result = []
+    for i in range(max_bucket + 1):
+        entry = buckets.get(i, {"packets": 0, "bytes": 0})
+        result.append({
+            "time": i * interval,
+            "packets": entry["packets"],
+            "bytes": entry["bytes"],
+        })
+    return result
 
 
 def plot_traffic_trend(trend: list, save_path: str = None):
@@ -213,8 +227,8 @@ def plot_traffic_trend(trend: list, save_path: str = None):
         return False
     if not trend:
         return False
-    x = [t[0] for t in trend]
-    y = [t[1] for t in trend]
+    x = [t["time"] for t in trend]
+    y = [t["packets"] for t in trend]
     plt.figure(figsize=(10, 4))
     plt.plot(x, y, marker="o", markersize=2, linewidth=1)
     plt.xlabel("时间 (秒)")

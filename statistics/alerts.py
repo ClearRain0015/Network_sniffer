@@ -13,10 +13,20 @@ import time
 class SynFloodDetector:
     """SYN 洪水检测器"""
 
-    def __init__(self, threshold: int = 100, window: float = 1.0):
+    def __init__(self, threshold: int = 100, window: float = 1.0,
+                 window_seconds: float = None):
         self.threshold = threshold
-        self.window = window
+        self.window = window_seconds if window_seconds is not None else window
         self._records = defaultdict(list)
+
+    def observe(self, packet):
+        """接收 ParsedPacket，返回告警消息或 None"""
+        if packet.proto_name != "TCP" or not (packet.tcp_flags & 0x02):
+            return None
+        triggered = self.feed(packet.ip_src, packet.timestamp)
+        if triggered:
+            return f"SYN 告警: {packet.ip_src} 发送大量 SYN 包"
+        return None
 
     def feed(self, src_ip: str, timestamp: float = None) -> bool:
         if timestamp is None:
@@ -44,8 +54,10 @@ class SynFloodDetector:
         self._records.clear()
 
 
-def detect_syn_alerts(packets, threshold: int = 100) -> list:
-    detector = SynFloodDetector(threshold=threshold)
+def detect_syn_alerts(packets, threshold: int = 100,
+                       window_seconds: float = None) -> list:
+    detector = SynFloodDetector(threshold=threshold,
+                                window_seconds=window_seconds)
     for packet in packets:
         if packet.proto_name == "TCP" and (packet.tcp_flags & 0x02):
             detector.feed(packet.ip_src, packet.timestamp)
