@@ -33,14 +33,25 @@ def save_packets(packets: List[ParsedPacket],
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         filepath = os.path.join(DEFAULT_SAVE_DIR, f"capture_{timestamp}")
 
+    saved = None
+
     # 尝试 PCAP
     try:
-        return save_as_pcap(packets, filepath + ".pcap")
+        saved = save_as_pcap(packets, filepath + ".pcap")
     except ImportError:
         pass
 
     # 回退 TXT
-    return save_as_txt(packets, filepath + ".txt")
+    if saved is None:
+        saved = save_as_txt(packets, filepath + ".txt")
+
+    # 同时保存 CSV
+    try:
+        save_as_csv(packets, filepath + ".csv")
+    except Exception:
+        pass
+
+    return saved
 
 
 def save_as_pcap(packets: List[ParsedPacket], filepath: str) -> str:
