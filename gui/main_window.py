@@ -33,7 +33,7 @@ try:
         QHeaderView, QMessageBox, QStatusBar,
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-    from PyQt5.QtGui import QFont
+    from PyQt5.QtGui import QFont, QColor, QPalette
     _HAS_PYQT5 = True
 except ImportError:
     pass
@@ -73,7 +73,10 @@ if _HAS_PYQT5:
             super().__init__()
             self.backend = backend
             self.setWindowTitle("Sniffer — 网络数据包分析器")
-            self.resize(1200, 800)
+            self.resize(1280, 860)
+            self.setMinimumSize(960, 600)
+
+            self._zoom = 100  # 缩放百分比，100=默认
 
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
@@ -95,8 +98,11 @@ if _HAS_PYQT5:
         # ── UI 构建 ──────────────────────────
 
         def _build_ui(self):
+            self._apply_theme()
+
             # 工具栏
             toolbar = QWidget()
+            toolbar.setObjectName("toolbar")
             tl = QHBoxLayout(toolbar)
             tl.setContentsMargins(6, 6, 6, 6)
 
@@ -107,19 +113,23 @@ if _HAS_PYQT5:
             tl.addWidget(self.iface_combo)
 
             self.btn_start = QPushButton("开始抓包")
+            self.btn_start.setObjectName("btnStart")
             self.btn_start.clicked.connect(self._on_start)
             tl.addWidget(self.btn_start)
 
             self.btn_stop = QPushButton("停止")
+            self.btn_stop.setObjectName("btnStop")
             self.btn_stop.setEnabled(False)
             self.btn_stop.clicked.connect(self._on_stop)
             tl.addWidget(self.btn_stop)
 
             self.btn_save = QPushButton("保存PCAP")
+            self.btn_save.setObjectName("btnSave")
             self.btn_save.clicked.connect(self._on_save)
             tl.addWidget(self.btn_save)
 
             self.btn_clear = QPushButton("清空")
+            self.btn_clear.setObjectName("btnClear")
             self.btn_clear.clicked.connect(self._on_clear)
             tl.addWidget(self.btn_clear)
 
@@ -133,20 +143,47 @@ if _HAS_PYQT5:
             tl.addWidget(self.filter_input)
 
             self.btn_filter = QPushButton("应用")
+            self.btn_filter.setObjectName("btnFilter")
             self.btn_filter.clicked.connect(self._on_filter_apply)
             tl.addWidget(self.btn_filter)
 
             tl.addStretch()
 
+            # 缩放控件
+            self.btn_zoom_out = QPushButton("−")
+            self.btn_zoom_out.setObjectName("btnZoom")
+            self.btn_zoom_out.setFixedWidth(32)
+            self.btn_zoom_out.setToolTip("缩小 (Ctrl+−)")
+            self.btn_zoom_out.clicked.connect(self._zoom_out)
+            tl.addWidget(self.btn_zoom_out)
+
+            self.zoom_label = QLabel("100%")
+            self.zoom_label.setObjectName("zoomLabel")
+            self.zoom_label.setAlignment(Qt.AlignCenter)
+            self.zoom_label.setFixedWidth(44)
+            tl.addWidget(self.zoom_label)
+
+            self.btn_zoom_in = QPushButton("+")
+            self.btn_zoom_in.setObjectName("btnZoom")
+            self.btn_zoom_in.setFixedWidth(32)
+            self.btn_zoom_in.setToolTip("放大 (Ctrl++)")
+            self.btn_zoom_in.clicked.connect(self._zoom_in)
+            tl.addWidget(self.btn_zoom_in)
+
+            tl.addSpacing(10)
+
             self.btn_stats = QPushButton("统计")
+            self.btn_stats.setObjectName("btnStats")
             self.btn_stats.clicked.connect(self._on_show_stats)
             tl.addWidget(self.btn_stats)
 
             self.btn_trend = QPushButton("趋势图")
+            self.btn_trend.setObjectName("btnTrend")
             self.btn_trend.clicked.connect(self._on_show_trend)
             tl.addWidget(self.btn_trend)
 
             self.btn_alerts = QPushButton("告警")
+            self.btn_alerts.setObjectName("btnAlerts")
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
 
@@ -175,6 +212,302 @@ if _HAS_PYQT5:
             self.setStatusBar(self.statusbar)
             self.status_label = QLabel("就绪 — 请选择网卡并点击「开始抓包」")
             self.statusbar.addWidget(self.status_label)
+
+        # ── 主题 & 缩放 ──────────────────────
+
+        def _s(self, base_px: int) -> str:
+            """Scale a base pixel value by the current zoom factor."""
+            return f"{max(1, round(base_px * self._zoom / 100))}px"
+
+        def _apply_theme(self):
+            """Apply Google Material Design inspired theme with current zoom."""
+            s = self._s  # shorthand
+            self.setStyleSheet(f"""
+            /* ── 全局 ─────────────────────── */
+            QMainWindow {{
+                background-color: #f8f9fa;
+            }}
+            QWidget {{
+                background-color: #f8f9fa;
+                color: #202124;
+                font-family: "Google Sans", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+                font-size: {s(14)};
+            }}
+
+            /* ── 工具栏 ───────────────────── */
+            QWidget#toolbar {{
+                background-color: #ffffff;
+                border-bottom: 1px solid #dadce0;
+                padding: {s(4)} 0;
+            }}
+
+            /* ── 缩放标签 ───────────────── */
+            QLabel#zoomLabel {{
+                color: #202124;
+                font-size: {s(13)};
+                font-weight: 500;
+            }}
+
+            /* ── 按钮 ─────────────────────── */
+            QPushButton {{
+                background-color: #ffffff;
+                color: #202124;
+                border: 1px solid #dadce0;
+                border-radius: {s(8)};
+                padding: {s(7)} {s(18)};
+                min-height: {s(32)};
+                font-size: {s(13)};
+                font-weight: 500;
+                letter-spacing: 0.2px;
+            }}
+            QPushButton:hover {{
+                background-color: #f1f3f4;
+                border-color: #c4c7cc;
+            }}
+            QPushButton:pressed {{
+                background-color: #e8eaed;
+            }}
+            QPushButton:disabled {{
+                background-color: #f8f9fa;
+                color: #9aa0a6;
+                border-color: #e8eaed;
+            }}
+            QPushButton#btnStart {{
+                background-color: #1a73e8;
+                color: #ffffff;
+                border: none;
+            }}
+            QPushButton#btnStart:hover {{
+                background-color: #1557b0;
+            }}
+            QPushButton#btnStop {{
+                background-color: #ea4335;
+                color: #ffffff;
+                border: none;
+            }}
+            QPushButton#btnStop:hover {{
+                background-color: #c5221f;
+            }}
+            QPushButton#btnZoom {{
+                background-color: transparent;
+                color: #5f6368;
+                border: none;
+                border-radius: {s(4)};
+                padding: {s(4)} {s(6)};
+                min-height: {s(28)};
+                font-size: {s(16)};
+                font-weight: 600;
+            }}
+            QPushButton#btnZoom:hover {{
+                background-color: #e8eaed;
+            }}
+
+            /* ── 输入框 ──────────────────── */
+            QLineEdit {{
+                background-color: #ffffff;
+                color: #202124;
+                border: 1px solid #dadce0;
+                border-radius: {s(8)};
+                padding: {s(8)} {s(12)};
+                font-size: {s(14)};
+                selection-background-color: #c7dbf9;
+            }}
+            QLineEdit:focus {{
+                border-color: #1a73e8;
+                border-width: 2px;
+                padding: {s(7)} {s(11)};
+            }}
+
+            /* ── 下拉框 ──────────────────── */
+            QComboBox {{
+                background-color: #ffffff;
+                color: #202124;
+                border: 1px solid #dadce0;
+                border-radius: {s(8)};
+                padding: {s(7)} {s(12)};
+                min-width: {s(180)};
+                font-size: {s(14)};
+            }}
+            QComboBox:hover {{
+                border-color: #c4c7cc;
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: {s(28)};
+                border-left: 1px solid #e8eaed;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #ffffff;
+                color: #202124;
+                selection-background-color: #e8f0fe;
+                border: 1px solid #dadce0;
+                outline: none;
+                padding: {s(4)} 0;
+                font-size: {s(14)};
+            }}
+
+            /* ── 分隔条 ──────────────────── */
+            QSplitter::handle {{
+                background-color: #dadce0;
+            }}
+            QSplitter::handle:vertical {{
+                height: 1px;
+            }}
+
+            /* ── 树形/表格 ──────────────── */
+            QTreeWidget {{
+                background-color: #ffffff;
+                color: #202124;
+                border: 1px solid #dadce0;
+                alternate-background-color: #fafbfc;
+                outline: none;
+                font-size: {s(13)};
+            }}
+            QTreeWidget::item {{
+                padding: {s(5)} {s(10)};
+                min-height: {s(28)};
+            }}
+            QTreeWidget::item:selected {{
+                background-color: #e8f0fe;
+                color: #1a73e8;
+            }}
+            QTreeWidget::item:hover {{
+                background-color: #f1f3f4;
+            }}
+            QHeaderView::section {{
+                background-color: #ffffff;
+                color: #5f6368;
+                padding: {s(8)} {s(12)};
+                border: none;
+                border-right: 1px solid #e8eaed;
+                border-bottom: 1px solid #dadce0;
+                font-weight: 600;
+                font-size: {s(12)};
+                letter-spacing: 0.3px;
+                text-transform: uppercase;
+            }}
+
+            /* ── 滚动条 ──────────────────── */
+            QScrollBar:vertical {{
+                background-color: transparent;
+                width: {s(8)};
+                margin: {s(4)} 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: #c4c7cc;
+                border-radius: {s(4)};
+                min-height: {s(32)};
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: #9aa0a6;
+            }}
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
+            QScrollBar:horizontal {{
+                background-color: transparent;
+                height: {s(8)};
+                margin: 0 {s(4)};
+            }}
+            QScrollBar::handle:horizontal {{
+                background-color: #c4c7cc;
+                border-radius: {s(4)};
+                min-width: {s(32)};
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background-color: #9aa0a6;
+            }}
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {{
+                width: 0;
+            }}
+
+            /* ── 状态栏 ──────────────────── */
+            QStatusBar {{
+                background-color: #ffffff;
+                color: #5f6368;
+                border-top: 1px solid #dadce0;
+                padding: {s(4)} {s(14)};
+                font-size: {s(13)};
+            }}
+
+            /* ── 文本视图 ──────────────── */
+            QTextEdit {{
+                background-color: #ffffff;
+                color: #202124;
+                border: 1px solid #dadce0;
+                border-radius: {s(8)};
+                font-family: "SF Mono", "Consolas", "Courier New", monospace;
+                font-size: {s(13)};
+                selection-background-color: #c7dbf9;
+            }}
+
+            /* ── 标签 ──────────────────── */
+            QLabel {{
+                background-color: transparent;
+                color: #5f6368;
+                font-size: {s(14)};
+            }}
+            """)
+
+            p = self.palette()
+            p.setColor(QPalette.Window, QColor("#f8f9fa"))
+            p.setColor(QPalette.WindowText, QColor("#202124"))
+            p.setColor(QPalette.Base, QColor("#ffffff"))
+            p.setColor(QPalette.Text, QColor("#202124"))
+            p.setColor(QPalette.Button, QColor("#ffffff"))
+            p.setColor(QPalette.ButtonText, QColor("#202124"))
+            p.setColor(QPalette.Highlight, QColor("#1a73e8"))
+            p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+            self.setPalette(p)
+
+        # ── 缩放 ──────────────────────────────
+
+        def _apply_zoom(self):
+            """Re-apply theme with current zoom and update the label."""
+            self._apply_theme()
+            self.zoom_label.setText(f"{self._zoom}%")
+
+        def _zoom_in(self):
+            if self._zoom >= 200:
+                return
+            self._zoom = min(200, self._zoom + 10)
+            self._apply_zoom()
+
+        def _zoom_out(self):
+            if self._zoom <= 80:
+                return
+            self._zoom = max(80, self._zoom - 10)
+            self._apply_zoom()
+
+        def _zoom_reset(self):
+            self._zoom = 100
+            self._apply_zoom()
+
+        def keyPressEvent(self, event):
+            """Handle Ctrl+Plus, Ctrl+Minus, Ctrl+0 for zoom."""
+            ctrl = event.modifiers() & Qt.ControlModifier
+            if ctrl and event.key() == Qt.Key_Equal:    # Ctrl+=
+                self._zoom_in()
+            elif ctrl and event.key() == Qt.Key_Minus:   # Ctrl+-
+                self._zoom_out()
+            elif ctrl and event.key() == Qt.Key_0:       # Ctrl+0
+                self._zoom_reset()
+            else:
+                super().keyPressEvent(event)
+
+        def wheelEvent(self, event):
+            """Ctrl+MouseWheel to zoom."""
+            if event.modifiers() & Qt.ControlModifier:
+                delta = event.angleDelta().y()
+                if delta > 0:
+                    self._zoom_in()
+                elif delta < 0:
+                    self._zoom_out()
+            else:
+                super().wheelEvent(event)
 
         # ── 事件处理 ──────────────────────────
 
@@ -260,19 +593,25 @@ if _HAS_PYQT5:
 
         def _on_show_stats(self):
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
-            from statistics.flow_statistics import compute_statistics, format_statistics
+            from statistics.flow_statistics import compute_statistics, format_statistics_html
             stats = compute_statistics(self.packets)
-            text = format_statistics(stats)
+            html = format_statistics_html(stats, zoom=self._zoom)
 
+            z = self._zoom / 100
             dlg = QDialog(self)
             dlg.setWindowTitle("流量统计")
-            dlg.resize(520, 480)
-            dlg.setMinimumSize(400, 300)
+            dlg.resize(int(620 * z), int(600 * z))
+            dlg.setMinimumSize(int(480 * z), int(400 * z))
+            dlg.setStyleSheet(f"""
+                QDialog {{ background-color: #f8f9fa; }}
+                QTextEdit {{ font-size: {self._s(13)}; }}
+            """)
             layout = QVBoxLayout(dlg)
+            layout.setContentsMargins(int(8 * z), int(8 * z), int(8 * z), int(8 * z))
             text_edit = QTextEdit()
             text_edit.setReadOnly(True)
-            text_edit.setPlainText(text)
-            text_edit.setFont(QFont("Consolas, Courier New", 10))
+            text_edit.setHtml(html)
+            text_edit.setObjectName("statsView")
             layout.addWidget(text_edit)
             dlg.exec_()
 
@@ -281,7 +620,7 @@ if _HAS_PYQT5:
             if not self.packets:
                 QMessageBox.information(self, "提示", "没有数据包可绘制趋势图")
                 return
-            if not plot_traffic_trend(self.packets):
+            if not plot_traffic_trend(self.packets, zoom=self._zoom):
                 QMessageBox.information(self, "提示", "无法绘制趋势图，请确认已安装 matplotlib")
 
         def _on_show_alerts(self):
@@ -384,7 +723,22 @@ else:
 
             self.root = tk.Tk()
             self.root.title("Sniffer — 网络数据包分析器")
-            self.root.geometry("1200x800")
+            self.root.geometry("1280x860")
+            self.root.minsize(960, 600)
+            self.root.configure(bg="#f8f9fa")
+
+            self._tk_zoom = 100
+
+            # Google Material 风格配色
+            self._tk_colors = {
+                "bg": "#f8f9fa", "frame_bg": "#ffffff",
+                "fg": "#202124", "entry_bg": "#ffffff",
+                "btn_bg": "#ffffff", "btn_fg": "#202124",
+                "active_btn_bg": "#1a73e8", "stop_btn_bg": "#ea4335",
+                "tree_bg": "#ffffff", "tree_fg": "#202124",
+                "select_bg": "#e8f0fe", "select_fg": "#1a73e8",
+            }
+            self._setup_tk_ttk_style()
 
             self.sniffer: Sniffer = None
             self.packets: List[ParsedPacket] = []
@@ -395,62 +749,149 @@ else:
 
             self._build_tk_ui()
 
-        def _build_tk_ui(self):
-            # 工具栏
-            toolbar = self.tk.Frame(self.root)
-            toolbar.pack(fill=self.tk.X, padx=4, pady=4)
+        def _setup_tk_ttk_style(self):
+            """Configure ttk styles for Google Material theme."""
+            style = self.ttk.Style()
+            style.theme_use("clam")
+            c = self._tk_colors
+            style.configure(".", background=c["bg"], foreground=c["fg"],
+                           fieldbackground=c["entry_bg"], font=("", 10))
+            style.configure("TLabel", background=c["bg"], foreground=c["fg"])
+            style.configure("TFrame", background=c["bg"])
+            style.configure("TLabelframe", background=c["bg"], foreground=c["fg"])
+            style.configure("TLabelframe.Label", background=c["bg"], foreground=c["fg"])
+            style.configure("Treeview",
+                background=c["tree_bg"], foreground=c["tree_fg"],
+                fieldbackground=c["tree_bg"], borderwidth=0,
+                font=("", 10), rowheight=30,
+            )
+            style.configure("Treeview.Heading",
+                background=c["frame_bg"], foreground="#5f6368",
+                relief="flat", borderwidth=0, padding=(10, 7),
+                font=("", 10, "bold"),
+            )
+            style.map("Treeview",
+                background=[("selected", c["select_bg"])],
+                foreground=[("selected", c["select_fg"])],
+            )
+            style.map("Treeview.Heading",
+                background=[("active", "#f1f3f4")],
+            )
+            style.configure("TCombobox",
+                fieldbackground=c["frame_bg"], background=c["frame_bg"],
+                foreground=c["fg"], arrowcolor="#5f6368",
+                font=("", 10), padding=(8, 4),
+            )
+            style.map("TCombobox",
+                fieldbackground=[("readonly", c["frame_bg"])],
+                foreground=[("readonly", c["fg"])],
+            )
+            style.configure("TSeparator", background="#dadce0")
+            style.configure("TScrollbar",
+                background=c["bg"], troughcolor=c["bg"],
+                arrowcolor="#9aa0a6",
+            )
 
-            self.tk.Label(toolbar, text="网卡:").pack(side=self.tk.LEFT)
+        def _build_tk_ui(self):
+            c = self._tk_colors
+
+            # 工具栏
+            toolbar = self.tk.Frame(self.root, bg=c["frame_bg"], padx=10, pady=8)
+            toolbar.pack(fill=self.tk.X)
+
+            self.tk.Label(toolbar, text="网卡:", bg=c["frame_bg"], fg=c["fg"]).pack(side=self.tk.LEFT)
             self.iface_var = self.tk.StringVar()
             self.iface_combo = self.ttk.Combobox(
-                toolbar, textvariable=self.iface_var, width=20)
+                toolbar, textvariable=self.iface_var, width=20, state="readonly")
             self._refresh_interfaces_tk()
             self.iface_combo.pack(side=self.tk.LEFT, padx=4)
 
             self.btn_start = self.tk.Button(
-                toolbar, text="开始抓包", command=self._on_start_tk)
-            self.btn_start.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="开始抓包", command=self._on_start_tk,
+                bg=c["active_btn_bg"], fg="#ffffff", font=("", 10, "bold"),
+                relief=self.tk.FLAT, padx=16, pady=5, cursor="hand2")
+            self.btn_start.pack(side=self.tk.LEFT, padx=3)
 
             self.btn_stop = self.tk.Button(
-                toolbar, text="停止", command=self._on_stop_tk, state=self.tk.DISABLED)
-            self.btn_stop.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="停止", command=self._on_stop_tk, state=self.tk.DISABLED,
+                bg=c["stop_btn_bg"], fg="#ffffff", font=("", 10, "bold"),
+                relief=self.tk.FLAT, padx=16, pady=5, cursor="hand2")
+            self.btn_stop.pack(side=self.tk.LEFT, padx=3)
 
             self.btn_save = self.tk.Button(
-                toolbar, text="保存PCAP", command=self._on_save_tk)
-            self.btn_save.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="保存PCAP", command=self._on_save_tk,
+                bg=c["btn_bg"], fg=c["btn_fg"], font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_save.pack(side=self.tk.LEFT, padx=3)
 
             self.btn_clear = self.tk.Button(
-                toolbar, text="清空", command=self._on_clear_tk)
-            self.btn_clear.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="清空", command=self._on_clear_tk,
+                bg=c["btn_bg"], fg=c["btn_fg"], font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_clear.pack(side=self.tk.LEFT, padx=3)
 
-            self.tk.Label(toolbar, text="  过滤:").pack(side=self.tk.LEFT)
+            self.tk.Label(toolbar, text="  过滤:", bg=c["frame_bg"], fg=c["fg"]).pack(side=self.tk.LEFT)
             self.filter_var = self.tk.StringVar()
             self.filter_entry = self.tk.Entry(
-                toolbar, textvariable=self.filter_var, width=30)
-            self.filter_entry.pack(side=self.tk.LEFT, padx=4)
+                toolbar, textvariable=self.filter_var, width=28,
+                bg=c["entry_bg"], fg=c["fg"], insertbackground=c["fg"],
+                relief=self.tk.FLAT, font=("Consolas", 10),
+            )
+            self.filter_entry.pack(side=self.tk.LEFT, padx=4, ipady=2)
 
             self.btn_filter = self.tk.Button(
-                toolbar, text="应用", command=self._on_filter_apply_tk)
-            self.btn_filter.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="应用", command=self._on_filter_apply_tk,
+                bg="#1a73e8", fg="#ffffff", font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_filter.pack(side=self.tk.LEFT, padx=3)
+
+            self.tk.Frame(toolbar, bg=c["frame_bg"], width=16).pack(side=self.tk.LEFT)
 
             self.btn_stats = self.tk.Button(
-                toolbar, text="统计", command=self._on_show_stats_tk)
-            self.btn_stats.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="统计", command=self._on_show_stats_tk,
+                bg=c["btn_bg"], fg=c["btn_fg"], font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_stats.pack(side=self.tk.LEFT, padx=3)
 
             self.btn_trend = self.tk.Button(
-                toolbar, text="趋势图", command=self._on_show_trend_tk)
-            self.btn_trend.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="趋势图", command=self._on_show_trend_tk,
+                bg=c["btn_bg"], fg=c["btn_fg"], font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_trend.pack(side=self.tk.LEFT, padx=3)
 
             self.btn_alerts = self.tk.Button(
-                toolbar, text="告警", command=self._on_show_alerts_tk)
-            self.btn_alerts.pack(side=self.tk.LEFT, padx=2)
+                toolbar, text="告警", command=self._on_show_alerts_tk,
+                bg=c["btn_bg"], fg=c["btn_fg"], font=("", 10),
+                relief=self.tk.FLAT, padx=14, pady=5, cursor="hand2")
+            self.btn_alerts.pack(side=self.tk.LEFT, padx=3)
+
+            # 缩放控件
+            self.tk.Frame(toolbar, bg=c["frame_bg"], width=10).pack(side=self.tk.LEFT)
+            self.btn_zoom_out_tk = self.tk.Button(
+                toolbar, text="−", command=self._zoom_out_tk,
+                bg=c["btn_bg"], fg="#5f6368", font=("", 13, "bold"),
+                relief=self.tk.FLAT, padx=6, pady=3, cursor="hand2",
+                bd=0, highlightthickness=0)
+            self.btn_zoom_out_tk.pack(side=self.tk.LEFT)
+
+            self.zoom_label_tk = self.tk.Label(
+                toolbar, text="100%", bg=c["frame_bg"], fg=c["fg"],
+                font=("", 10), width=5)
+            self.zoom_label_tk.pack(side=self.tk.LEFT)
+
+            self.btn_zoom_in_tk = self.tk.Button(
+                toolbar, text="+", command=self._zoom_in_tk,
+                bg=c["btn_bg"], fg="#5f6368", font=("", 13, "bold"),
+                relief=self.tk.FLAT, padx=6, pady=3, cursor="hand2",
+                bd=0, highlightthickness=0)
+            self.btn_zoom_in_tk.pack(side=self.tk.LEFT)
+
+            # 分隔线
+            self.tk.Frame(self.root, bg="#dadce0", height=1).pack(fill=self.tk.X)
 
             # 包列表
-            self.ttk.Separator(self.root, orient=self.tk.HORIZONTAL).pack(
-                fill=self.tk.X, padx=4)
-
-            list_frame = self.tk.Frame(self.root)
-            list_frame.pack(fill=self.tk.BOTH, expand=True, padx=4, pady=2)
+            list_frame = self.tk.Frame(self.root, bg=c["bg"])
+            list_frame.pack(fill=self.tk.BOTH, expand=True, padx=4, pady=(4, 0))
 
             columns = ("No", "Time", "Source", "Destination", "Protocol", "Length", "Info")
             self.tree = self.ttk.Treeview(
@@ -458,26 +899,62 @@ else:
             col_widths = [50, 120, 150, 150, 80, 70, 400]
             for col, width in zip(columns, col_widths):
                 self.tree.heading(col, text=col)
-                self.tree.column(col, width=width, anchor=self.tk.W)
+                self.tree.column(col, width=width, anchor=self.tk.W, minwidth=40)
 
-            scrollbar = self.ttk.Scrollbar(
-                list_frame, orient=self.tk.VERTICAL, command=self.tree.yview)
-            self.tree.configure(yscrollcommand=scrollbar.set)
+            vsb = self.ttk.Scrollbar(list_frame, orient=self.tk.VERTICAL, command=self.tree.yview)
+            self.tree.configure(yscrollcommand=vsb.set)
             self.tree.pack(side=self.tk.LEFT, fill=self.tk.BOTH, expand=True)
-            scrollbar.pack(side=self.tk.RIGHT, fill=self.tk.Y)
+            vsb.pack(side=self.tk.RIGHT, fill=self.tk.Y)
             self.tree.bind("<<TreeviewSelect>>", self._on_tree_select_tk)
 
             self.detail_panel = PacketDetailPanel(backend="tkinter", parent=self.root)
 
+            # 状态栏
             self.status_var = self.tk.StringVar(value="就绪 — 请选择网卡并点击「开始抓包」")
             statusbar = self.tk.Label(
                 self.root, textvariable=self.status_var,
-                relief=self.tk.SUNKEN, anchor=self.tk.W)
+                bg=c["frame_bg"], fg="#5f6368",
+                relief=self.tk.FLAT, anchor=self.tk.W, padx=14, pady=5,
+                font=("", 9))
             statusbar.pack(side=self.tk.BOTTOM, fill=self.tk.X)
 
             self._tk_pending: List[ParsedPacket] = []
             self._tk_lock = threading.Lock()
+            self._bind_tk_zoom_keys()
             self._tk_flush()
+
+        # ── Tkinter 缩放 ──────────────────────
+
+        def _apply_zoom_tk(self):
+            """Apply tk scaling and update label."""
+            self.root.tk.call("tk", "scaling", self._tk_zoom / 100)
+            self.zoom_label_tk.config(text=f"{self._tk_zoom}%")
+
+        def _zoom_in_tk(self):
+            if self._tk_zoom >= 200:
+                return
+            self._tk_zoom = min(200, self._tk_zoom + 10)
+            self._apply_zoom_tk()
+
+        def _zoom_out_tk(self):
+            if self._tk_zoom <= 80:
+                return
+            self._tk_zoom = max(80, self._tk_zoom - 10)
+            self._apply_zoom_tk()
+
+        def _zoom_reset_tk(self):
+            self._tk_zoom = 100
+            self._apply_zoom_tk()
+
+        def _bind_tk_zoom_keys(self):
+            """Bind Ctrl+Plus/Minus/0 and Ctrl+MouseWheel."""
+            self.root.bind("<Control-=>", lambda e: self._zoom_in_tk())
+            self.root.bind("<Control-+>", lambda e: self._zoom_in_tk())
+            self.root.bind("<Control-minus>", lambda e: self._zoom_out_tk())
+            self.root.bind("<Control-0>", lambda e: self._zoom_reset_tk())
+            # Ctrl+MouseWheel
+            self.root.bind("<Control-MouseWheel>",
+                           lambda e: self._zoom_in_tk() if e.delta > 0 else self._zoom_out_tk())
 
         # ── Tkinter 事件处理 ──────────────────
 
@@ -554,15 +1031,34 @@ else:
             from statistics.flow_statistics import compute_statistics, format_statistics
             stats = compute_statistics(self.packets)
             text = format_statistics(stats)
+            c = self._tk_colors
 
-            dlg = self.tk.Toplevel(self.root)
+            z = self._tk_zoom / 100
+            dlg = self.tk.Toplevel(self.root, bg=c["bg"])
             dlg.title("流量统计")
-            dlg.geometry("520x480")
-            dlg.minsize(400, 300)
+            dlg.geometry(f"{int(560*z)}x{int(520*z)}")
+            dlg.minsize(int(420*z), int(340*z))
 
-            text_widget = self.tk.Text(dlg, wrap=self.tk.NONE, font=("Consolas", 10))
-            scroll_y = self.ttk.Scrollbar(dlg, orient=self.tk.VERTICAL, command=text_widget.yview)
-            scroll_x = self.ttk.Scrollbar(dlg, orient=self.tk.HORIZONTAL, command=text_widget.xview)
+            bar = self.tk.Frame(dlg, bg=c["frame_bg"], height=int(36*z))
+            bar.pack(fill=self.tk.X)
+            self.tk.Label(bar, text="流量统计", bg=c["frame_bg"], fg=c["fg"],
+                          font=("", int(12*z), "bold")).pack(
+                side=self.tk.LEFT, padx=int(12*z), pady=int(6*z))
+
+            text_frame = self.tk.Frame(dlg, bg=c["bg"])
+            text_frame.pack(fill=self.tk.BOTH, expand=True,
+                            padx=int(8*z), pady=int(8*z))
+
+            text_widget = self.tk.Text(text_frame, wrap=self.tk.NONE,
+                                       bg=c["entry_bg"], fg=c["fg"],
+                                       insertbackground=c["fg"],
+                                       font=("Consolas", int(10*z)),
+                                       relief=self.tk.FLAT,
+                                       padx=int(8*z), pady=int(8*z))
+            scroll_y = self.tk.Scrollbar(text_frame, orient=self.tk.VERTICAL,
+                                         command=text_widget.yview, bg=c["bg"])
+            scroll_x = self.tk.Scrollbar(text_frame, orient=self.tk.HORIZONTAL,
+                                         command=text_widget.xview, bg=c["bg"])
             text_widget.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
 
             text_widget.insert("1.0", text)
@@ -571,8 +1067,8 @@ else:
             text_widget.grid(row=0, column=0, sticky="nsew")
             scroll_y.grid(row=0, column=1, sticky="ns")
             scroll_x.grid(row=1, column=0, sticky="ew")
-            dlg.grid_rowconfigure(0, weight=1)
-            dlg.grid_columnconfigure(0, weight=1)
+            text_frame.grid_rowconfigure(0, weight=1)
+            text_frame.grid_columnconfigure(0, weight=1)
 
         def _on_show_trend_tk(self):
             from tkinter import messagebox
@@ -580,7 +1076,7 @@ else:
             if not self.packets:
                 messagebox.showinfo("提示", "没有数据包可绘制趋势图")
                 return
-            if not plot_traffic_trend(self.packets):
+            if not plot_traffic_trend(self.packets, zoom=self._tk_zoom):
                 messagebox.showinfo("提示", "无法绘制趋势图，请确认已安装 matplotlib")
 
         def _on_show_alerts_tk(self):

@@ -135,11 +135,101 @@ def format_statistics(stats: dict) -> str:
     return "\n".join(lines)
 
 
+def format_statistics_html(stats: dict, zoom: int = 100) -> str:
+    """Return the statistics report as styled HTML for rich display."""
+    z = zoom / 100
+    if stats.get("total_packets", 0) == 0:
+        return (f'<p style="color:#9aa0a6; text-align:center; '
+                f'padding:{int(48*z)}px; font-size:{int(15*z)}px;">暂无数据</p>')
+
+    total = stats["total_packets"]
+
+    def row(label, value, color="#202124"):
+        return (
+            f'<tr>'
+            f'<td style="padding:{int(5*z)}px {int(14*z)}px; color:#5f6368; '
+            f'font-size:{int(14*z)}px;">{label}</td>'
+            f'<td style="padding:{int(5*z)}px {int(14*z)}px; color:{color}; font-weight:500; '
+            f'text-align:right; font-size:{int(14*z)}px;">{value}</td>'
+            f'</tr>'
+        )
+
+    def section(title, rows_html):
+        return (
+            f'<div style="margin-bottom:{int(20*z)}px;">'
+            f'<h3 style="color:#1a73e8; margin:0 0 {int(10*z)}px 0; '
+            f'padding:{int(6*z)}px 0; '
+            f'border-bottom:2px solid #1a73e8; font-size:{int(15*z)}px; '
+            f'font-weight:600; letter-spacing:0.3px;">{title}</h3>'
+            f'<table style="width:100%; border-collapse:collapse;">{rows_html}</table>'
+            f'</div>'
+        )
+
+    # ── 概览卡片 ──────────────────────────
+    cards = (
+        f'<div style="display:flex; gap:{int(14*z)}px; margin-bottom:{int(22*z)}px;">'
+        f'<div style="flex:1; background:#e8f0fe; border-radius:{int(12*z)}px; '
+        f'padding:{int(18*z)}px; text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px; font-weight:600; color:#1a73e8;">{total}</div>'
+        f'<div style="font-size:{int(12*z)}px; color:#5f6368; margin-top:{int(6*z)}px;">数据包</div></div>'
+        f'<div style="flex:1; background:#e6f4ea; border-radius:{int(12*z)}px; '
+        f'padding:{int(18*z)}px; text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px; font-weight:600; color:#1e8e3e;">{stats["total_bytes"]/1024:.1f} KB</div>'
+        f'<div style="font-size:{int(12*z)}px; color:#5f6368; margin-top:{int(6*z)}px;">总流量</div></div>'
+        f'<div style="flex:1; background:#fef7e0; border-radius:{int(12*z)}px; '
+        f'padding:{int(18*z)}px; text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px; font-weight:600; color:#f9ab00;">{stats["pps"]:.1f}</div>'
+        f'<div style="font-size:{int(12*z)}px; color:#5f6368; margin-top:{int(6*z)}px;">包/秒</div></div>'
+        f'<div style="flex:1; background:#f3e8fd; border-radius:{int(12*z)}px; '
+        f'padding:{int(18*z)}px; text-align:center;">'
+        f'<div style="font-size:{int(28*z)}px; font-weight:600; color:#9334e6;">{stats["duration"]:.2f} s</div>'
+        f'<div style="font-size:{int(12*z)}px; color:#5f6368; margin-top:{int(6*z)}px;">捕获时长</div></div>'
+        f'</div>'
+    )
+
+    html = f'<div style="font-family:\'Google Sans\',\'Segoe UI\',\'Microsoft YaHei UI\',sans-serif; padding:4px;">{cards}'
+
+    # ── 概览表 ─────────────────────────────
+    overview = "".join([
+        row("平均包长", f'{stats["avg_packet_size"]:.1f} bytes'),
+        row("平均速率", f'{stats["bps"]:.1f} bytes/s'),
+    ])
+    html += section("概览", overview)
+
+    # ── 协议分布 ──────────────────────────
+    proto_rows = "".join(
+        row(proto, f'{count} ({_pct(count, total)})',
+            "#1a73e8" if proto in ("TCP", "HTTP", "HTTPS") else
+            "#1e8e3e" if proto in ("UDP", "DNS") else
+            "#f9ab00" if proto == "ICMP" else "#202124")
+        for proto, count in stats.get("protocol_dist", {}).items()
+    )
+    html += section("协议分布", proto_rows)
+
+    # ── Top IP ────────────────────────────
+    ip_rows = "".join(row(ip, str(cnt)) for ip, cnt in stats.get("top_ips", []))
+    html += section("Top IP 地址", ip_rows)
+
+    # ── Top 端口 ──────────────────────────
+    port_rows = "".join(row(str(port), str(cnt)) for port, cnt in stats.get("top_ports", []))
+    html += section("Top 端口", port_rows)
+
+    # ── 包大小分布 ────────────────────────
+    size_rows = "".join(
+        row(bucket, f'{count} ({_pct(count, total)})')
+        for bucket, count in stats.get("size_buckets", {}).items()
+    )
+    html += section("包大小分布", size_rows)
+
+    html += "</div>"
+    return html
+
+
 def _pct(count: int, total: int) -> str:
     return f"{(count / total * 100 if total else 0):.1f}%"
 
 
-def plot_protocol_distribution(stats: dict, save_path: str = None):
+def plot_protocol_distribution(stats: dict, save_path: str = None, zoom: int = 100):
     try:
         import matplotlib.pyplot as plt
     except ImportError:
@@ -150,17 +240,75 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
     if not proto_dist:
         return
 
+    z = zoom / 100
+    _setup_google_style()
+
     labels = list(proto_dist.keys())
     sizes = list(proto_dist.values())
-    fig, ax = plt.subplots()
-    ax.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=90)
-    ax.set_title("Protocol Distribution")
+    google_colors = ["#1a73e8", "#ea4335", "#f9ab00", "#1e8e3e",
+                     "#4285f4", "#ff6d01", "#34a853", "#9334e6",
+                     "#46bdc6", "#fbbc04"]
+    colors = [google_colors[i % len(google_colors)] for i in range(len(labels))]
+
+    fig, ax = plt.subplots(figsize=(9.5 * z, 6.5 * z))
+    fig.patch.set_facecolor("#ffffff")
+    ax.set_facecolor("#ffffff")
+
+    wedges, texts, autotexts = ax.pie(
+        sizes, labels=None, autopct="%1.1f%%",
+        startangle=90, colors=colors,
+        pctdistance=0.78,
+        wedgeprops={"linewidth": 2 * z, "edgecolor": "#ffffff"},
+    )
+    for at in autotexts:
+        at.set_color("#202124")
+        at.set_fontweight("600")
+        at.set_fontsize(11 * z)
+    ax.set_title("Protocol Distribution", color="#202124",
+                 fontsize=19 * z, fontweight="600", pad=22 * z)
     ax.axis("equal")
 
+    # Legend to the right
+    ax.legend(
+        wedges, labels,
+        loc="center left",
+        bbox_to_anchor=(1, 0.5),
+        frameon=False,
+        fontsize=11 * z,
+        labelcolor="#202124",
+        handletextpad=0.8,
+    )
+
+    fig.tight_layout(pad=2)
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="#ffffff")
     else:
         plt.show()
+
+
+def _setup_google_style():
+    """Apply Google Material Design matplotlib style."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib as mpl
+    except ImportError:
+        return
+    try:
+        plt.style.use("seaborn-v0_8-whitegrid")
+    except Exception:
+        pass
+    mpl.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Segoe UI", "Microsoft YaHei UI", "Arial", "sans-serif"],
+        "axes.edgecolor": "#dadce0",
+        "axes.linewidth": 0.8,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "grid.color": "#e8eaed",
+        "grid.linewidth": 0.5,
+        "xtick.color": "#5f6368",
+        "ytick.color": "#5f6368",
+    })
 
 
 def compute_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1) -> List[dict]:
@@ -186,8 +334,8 @@ def compute_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1) 
 
 
 def plot_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1,
-                       save_path: str = None) -> bool:
-    """Plot packet and byte trends over time."""
+                       save_path: str = None, zoom: int = 100) -> bool:
+    """Plot packet and byte trends over time with Google Material style."""
     trend = compute_traffic_trend(packets, bucket_seconds)
     if not trend:
         return False
@@ -198,27 +346,52 @@ def plot_traffic_trend(packets: List[ParsedPacket], bucket_seconds: int = 1,
         print("matplotlib is required for plotting")
         return False
 
+    z = zoom / 100
+    _setup_google_style()
+
     times = [item["time"] for item in trend]
     packet_counts = [item["packets"] for item in trend]
     byte_counts = [item["bytes"] for item in trend]
 
-    fig, ax_packets = plt.subplots()
-    ax_packets.plot(times, packet_counts, marker="o", color="#2563eb", label="Packets/s")
-    ax_packets.set_xlabel("Time (s)")
-    ax_packets.set_ylabel("Packets", color="#2563eb")
-    ax_packets.tick_params(axis="y", labelcolor="#2563eb")
+    fig, ax_packets = plt.subplots(figsize=(12 * z, 5.8 * z))
+    fig.patch.set_facecolor("#ffffff")
+    ax_packets.set_facecolor("#ffffff")
+
+    # Fill beneath the packet line
+    ax_packets.fill_between(times, packet_counts, alpha=0.08, color="#1a73e8")
+    ax_packets.plot(times, packet_counts, marker="", color="#1a73e8",
+                    linewidth=2.2 * z, label="Packets/s", zorder=3)
+    ax_packets.set_xlabel("Time (s)", color="#5f6368", fontsize=12 * z, labelpad=10 * z)
+    ax_packets.set_ylabel("Packets", color="#1a73e8", fontsize=12 * z, labelpad=10 * z)
+    ax_packets.tick_params(axis="both", colors="#5f6368", labelsize=10.5 * z)
+    ax_packets.tick_params(axis="y", labelcolor="#1a73e8")
+    ax_packets.spines["top"].set_visible(False)
 
     ax_bytes = ax_packets.twinx()
-    ax_bytes.plot(times, byte_counts, marker="s", color="#dc2626", label="Bytes/s")
-    ax_bytes.set_ylabel("Bytes", color="#dc2626")
-    ax_bytes.tick_params(axis="y", labelcolor="#dc2626")
+    ax_bytes.fill_between(times, byte_counts, alpha=0.06, color="#ea4335")
+    ax_bytes.plot(times, byte_counts, marker="", color="#ea4335",
+                  linewidth=2.2 * z, label="Bytes/s", zorder=3)
+    ax_bytes.set_ylabel("Bytes", color="#ea4335", fontsize=12 * z, labelpad=10 * z)
+    ax_bytes.tick_params(axis="y", labelcolor="#ea4335", labelsize=10.5 * z)
+    ax_bytes.spines["top"].set_visible(False)
 
-    ax_packets.set_title("Traffic Trend")
-    ax_packets.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
-    fig.tight_layout()
+    ax_packets.set_title("Traffic Trend", color="#202124",
+                         fontsize=19 * z, fontweight="600", pad=22 * z)
+    ax_packets.grid(True, linestyle="-", linewidth=0.5, alpha=0.6, color="#e8eaed")
 
+    lines1, labels1 = ax_packets.get_legend_handles_labels()
+    lines2, labels2 = ax_bytes.get_legend_handles_labels()
+    ax_packets.legend(
+        lines1 + lines2, labels1 + labels2, loc="upper right",
+        facecolor="#ffffff", edgecolor="#dadce0",
+        labelcolor="#202124", framealpha=1.0, fontsize=10.5 * z,
+        borderpad=0.6, borderaxespad=0.8,
+        handlelength=1.6,
+    )
+
+    fig.tight_layout(pad=2.5)
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="#ffffff")
     else:
         plt.show()
     return True

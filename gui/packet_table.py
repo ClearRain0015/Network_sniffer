@@ -92,8 +92,9 @@ class PacketTable:
         from tkinter import ttk
 
         frame = ttk.Frame()
+        frame.configure(style="TFrame")
         columns = ("No", "Time", "Source", "Destination", "Protocol", "Length", "Info")
-        tree = ttk.Treeview(frame, columns=columns, show="headings")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
         for col in columns:
             tree.heading(col, text=col)
         col_widths = [50, 120, 150, 150, 80, 70, 400]
