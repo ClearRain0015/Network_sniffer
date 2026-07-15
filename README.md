@@ -102,11 +102,22 @@ sudo python main.py
 pytest tests/ -v
 ```
 
+## 一键运行（Release 下载）
+
+无需安装 Python 或任何依赖，下载解压即用：
+
+1. 打开 [Releases 页面](https://github.com/ClearRain0015/Network_sniffer/releases)
+2. 下载最新版 `Sniffer-vX.X.X.zip` 并解压
+3. 安装 Npcap（仅首次）：下载 [npcap-1.80.exe](https://npcap.com/dist/npcap-1.80.exe)，安装时勾选 **Install Npcap in WinPcap API-compatible Mode**
+4. **右键 `Sniffer.exe` → 以管理员身份运行**
+
+> Npcap 是抓包驱动，必须装；Python 不需要装，所有依赖已打包在内。
+
 ## 使用指南
 
 ### 1. 抓包
 
-1. 以管理员身份运行 `python main.py`
+1. 以管理员身份运行 `python main.py`（或双击 `Sniffer.exe`）
 2. 顶部下拉框选择网卡（会显示网卡型号 + IP，活跃网卡自动排在前面）
 3. 点击 **开始抓包**，列表自动刷新
 4. 点击 **停止** 结束抓包
