@@ -210,9 +210,9 @@ def plot_traffic_trend(trend: list, save_path: str = None):
         import matplotlib.pyplot as plt
     except ImportError:
         print("[!] 需要安装 matplotlib: pip install matplotlib")
-        return
+        return False
     if not trend:
-        return
+        return False
     x = [t[0] for t in trend]
     y = [t[1] for t in trend]
     plt.figure(figsize=(10, 4))
@@ -225,3 +225,4 @@ def plot_traffic_trend(trend: list, save_path: str = None):
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
     else:
         plt.show()
+    return True
