@@ -527,10 +527,23 @@ if _HAS_PYQT5:
             idx = self.iface_combo.currentIndex()
             iface_name = self._iface_names[idx] if idx >= 0 else None
             bpf = self.filter_input.text().strip()
-            self._capture_counter = 0
-            self.packets.clear()
-            self._pending_packets.clear()
-            self.packet_table.clear()
+
+            # 如果有已有数据，询问是否清空
+            if self.packets:
+                reply = QMessageBox.question(
+                    self, "开始抓包",
+                    f"当前已有 {len(self.packets)} 个数据包。\n\n"
+                    "清空后重新开始，还是保留数据继续抓包？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+                if reply == QMessageBox.Yes:
+                    # 清空并开始
+                    self._capture_counter = 0
+                    self.packets.clear()
+                    self._pending_packets.clear()
+                    self.packet_table.clear()
+                # 否则保留数据，计数器从当前数量继续
 
             try:
                 self.sniff_thread = _SniffThread(iface_name, bpf)
@@ -538,7 +551,9 @@ if _HAS_PYQT5:
                 self.sniff_thread.start()
                 self.btn_start.setEnabled(False)
                 self.btn_stop.setEnabled(True)
-                self.status_label.setText(f"正在监听 {iface_name} ...")
+                self.status_label.setText(
+                    f"正在监听 {iface_name} ... 已捕获 {self._capture_counter} 包"
+                )
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"无法开始抓包:\n{e}")
 
@@ -949,13 +964,26 @@ else:
             idx = self.iface_combo.current()
             iface_name = self._tk_iface_names[idx] if idx >= 0 else None
             bpf = self.filter_var.get().strip()
-            self._capture_counter = 0
-            self._syn_detector = SynFloodDetector()
-            self._last_alert_at = 0.0
-            self.packets.clear()
-            self._tk_pending.clear()
-            for item in self.tree.get_children():
-                self.tree.delete(item)
+            # 如果有已有数据，询问是否清空
+            if self.packets:
+                from tkinter import messagebox
+                clear = messagebox.askyesno(
+                    "开始抓包",
+                    f"当前已有 {len(self.packets)} 个数据包。\n\n"
+                    "清空后重新开始，还是保留数据继续抓包？",
+                )
+                if clear:
+                    self._capture_counter = 0
+                    self.packets.clear()
+                    self._tk_pending.clear()
+                    for item in self.tree.get_children():
+                        self.tree.delete(item)
+            else:
+                self._capture_counter = 0
+                self.packets.clear()
+                self._tk_pending.clear()
+                for item in self.tree.get_children():
+                    self.tree.delete(item)
             self.sniffer = Sniffer(iface_name, bpf)
             self.sniffer.on_packet = self._on_tk_packet
             self._sniff_thread = threading.Thread(
