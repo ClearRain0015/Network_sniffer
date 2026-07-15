@@ -247,15 +247,16 @@ if _HAS_PYQT5:
             QMessageBox.information(self, "流量统计", format_statistics(stats))
 
         def _on_show_trend(self):
-            from statistics.flow_statistics import plot_traffic_trend
+            from statistics.flow_statistics import compute_traffic_trend, plot_traffic_trend
             if not self.packets:
                 QMessageBox.information(self, "提示", "没有数据包可绘制趋势图")
                 return
-            if not plot_traffic_trend(self.packets):
+            trend = compute_traffic_trend(self.packets)
+            if not plot_traffic_trend(trend):
                 QMessageBox.information(self, "提示", "无法绘制趋势图，请确认已安装 matplotlib")
 
         def _on_show_alerts(self):
-            alerts = detect_syn_alerts(self._all_packets)
+            alerts = detect_syn_alerts(self.packets)
             if not alerts:
                 QMessageBox.information(self, "实时告警", "当前未检测到大量 SYN 包")
                 return
