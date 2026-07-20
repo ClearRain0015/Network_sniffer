@@ -78,8 +78,8 @@ if _HAS_PYQT5:
             super().__init__()
             self.backend = backend
             self.setWindowTitle("Sniffer — 网络数据包分析器")
-            self.resize(1410, 950)
-            self.setMinimumSize(960, 600)
+            self.resize(1500, 1020)
+            self.setMinimumSize(1000, 700)
 
             self._zoom = 100  # 缩放百分比，100=默认
             self._dark = False  # 暗色模式
@@ -113,7 +113,7 @@ if _HAS_PYQT5:
             # — 抓包区 —
             tl.addWidget(QLabel("网卡:"))
             self.iface_combo = QComboBox()
-            self.iface_combo.setMinimumWidth(160)
+            self.iface_combo.setMinimumWidth(200)
             self._refresh_interfaces()
             tl.addWidget(self.iface_combo)
 
@@ -158,7 +158,7 @@ if _HAS_PYQT5:
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
             self.filter_input.setPlaceholderText("tcp / tcp.srcport == 80 / ip.ttl < 64 / tcp.flags.syn == 1 ...")
-            self.filter_input.setMinimumWidth(200)
+            self.filter_input.setMinimumWidth(220)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
 
@@ -198,9 +198,9 @@ if _HAS_PYQT5:
 
             self.btn_dark = QPushButton("🌙")
             self.btn_dark.setToolTip("切换暗色模式")
-            self.btn_dark.setFixedWidth(52)
-            self.btn_dark.setFixedHeight(44)
-            self.btn_dark.setStyleSheet("font-size: 24px;")
+            self.btn_dark.setMinimumWidth(48)
+            self.btn_dark.setMinimumHeight(40)
+            self.btn_dark.setStyleSheet("font-size: 22px; padding: 4px 8px;")
             self.btn_dark.clicked.connect(self._toggle_dark)
             tl.addWidget(self.btn_dark)
 
@@ -309,7 +309,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(7)} {s(18)};
-                min-height: {s(32)};
+                min-height: {s(36)};
                 font-size: {s(17)};
                 font-weight: 500;
                 letter-spacing: 0.2px;
@@ -379,7 +379,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(7)} {s(12)};
-                min-width: {s(180)};
+                min-width: {s(200)};
                 font-size: {s(20)};
             }}
             QComboBox:hover {{
@@ -451,7 +451,7 @@ if _HAS_PYQT5:
             QScrollBar::handle:vertical {{
                 background-color: {c["border"]};
                 border-radius: {s(4)};
-                min-height: {s(32)};
+                min-height: {s(36)};
             }}
             QScrollBar::handle:vertical:hover {{
                 background-color: #9aa0a6;
