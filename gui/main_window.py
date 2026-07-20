@@ -82,6 +82,7 @@ if _HAS_PYQT5:
             self.setMinimumSize(960, 600)
 
             self._zoom = 100  # 缩放百分比，100=默认
+            self._dark = False  # 暗色模式
 
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
@@ -195,6 +196,12 @@ if _HAS_PYQT5:
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
 
+            self.btn_dark = QPushButton("🌙")
+            self.btn_dark.setToolTip("切换暗色模式")
+            self.btn_dark.setFixedWidth(36)
+            self.btn_dark.clicked.connect(self._toggle_dark)
+            tl.addWidget(self.btn_dark)
+
             # 中央区域
             splitter = QSplitter(Qt.Vertical)
 
@@ -228,40 +235,64 @@ if _HAS_PYQT5:
             """Scale a base pixel value by the current zoom factor."""
             return f"{max(1, round(base_px * self._zoom / 100))}px"
 
+        def _toggle_dark(self):
+            """切换暗色模式"""
+            self._dark = not self._dark
+            self.btn_dark.setText("☀" if self._dark else "🌙")
+            self._apply_theme()
+
         def _apply_theme(self):
             """Apply Google Material Design inspired theme with current zoom."""
             s = self._s  # shorthand
+            d = self._dark
+            # 色彩变量
+            c = {
+                "bg":         "#1e1e1e" if d else "#f8f9fa",
+                "surface":    "#2d2d2d" if d else "#ffffff",
+                "surface2":   "#252525" if d else "#fafbfc",
+                "text":       "#e0e0e0" if d else "#202124",
+                "text2":      "#9aa0a6" if d else "#5f6368",
+                "border":     "#3d3d3d" if d else "#dadce0",
+                "border2":    "#333333" if d else "#e8eaed",
+                "hover":      "#3a3a3a" if d else "#f1f3f4",
+                "hover2":     "#333333" if d else "#e8eaed",
+                "press":      "#404040" if d else "#e8eaed",
+                "select":     "#1a3a5c" if d else "#e8f0fe",
+                "select_t":   "#4da3ff" if d else "#1a73e8",
+                "disabled":   "#3a3a3a" if d else "#f8f9fa",
+                "disabled_t": "#666666" if d else "#9aa0a6",
+            }
             self.setStyleSheet(f"""
             /* ── 全局 ─────────────────────── */
             QMainWindow {{
-                background-color: #f8f9fa;
+                background-color: {c["bg"]};
             }}
             QWidget {{
-                background-color: #f8f9fa;
-                color: #202124;
+                background-color: {c["bg"]};
+                color: {c["text"]};
                 font-family: "Google Sans", "Segoe UI", "Microsoft YaHei UI", sans-serif;
                 font-size: {s(14)};
             }}
 
             /* ── 工具栏 ───────────────────── */
             QWidget#toolbar {{
-                background-color: #ffffff;
-                border-bottom: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                border-bottom: 1px solid {c["border"]};
                 padding: {s(4)} 0;
             }}
 
             /* ── 缩放标签 ───────────────── */
             QLabel#zoomLabel {{
-                color: #202124;
+                color: {c["text"]};
                 font-size: {s(13)};
                 font-weight: 500;
             }}
 
             /* ── 按钮 ─────────────────────── */
             QPushButton {{
-                background-color: #ffffff;
-                color: #202124;
-                border: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(7)} {s(18)};
                 min-height: {s(32)};
@@ -270,16 +301,16 @@ if _HAS_PYQT5:
                 letter-spacing: 0.2px;
             }}
             QPushButton:hover {{
-                background-color: #f1f3f4;
-                border-color: #c4c7cc;
+                background-color: {c["hover"]};
+                border-color: {c["border"]};
             }}
             QPushButton:pressed {{
-                background-color: #e8eaed;
+                background-color: {c["press"]};
             }}
             QPushButton:disabled {{
-                background-color: #f8f9fa;
-                color: #9aa0a6;
-                border-color: #e8eaed;
+                background-color: {c["disabled"]};
+                color: {c["disabled_t"]};
+                border-color: {c["border2"]};
             }}
             QPushButton#btnStart {{
                 background-color: #1a73e8;
@@ -299,7 +330,7 @@ if _HAS_PYQT5:
             }}
             QPushButton#btnZoom {{
                 background-color: transparent;
-                color: #5f6368;
+                color: {c["text2"]};
                 border: none;
                 border-radius: {s(4)};
                 padding: {s(4)} {s(6)};
@@ -308,18 +339,18 @@ if _HAS_PYQT5:
                 font-weight: 600;
             }}
             QPushButton#btnZoom:hover {{
-                background-color: #e8eaed;
+                background-color: {c["hover2"]};
             }}
 
             /* ── 输入框 ──────────────────── */
             QLineEdit {{
-                background-color: #ffffff;
-                color: #202124;
-                border: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(8)} {s(12)};
                 font-size: {s(14)};
-                selection-background-color: #c7dbf9;
+                selection-background-color: {c["select"]};
             }}
             QLineEdit:focus {{
                 border-color: #1a73e8;
@@ -329,28 +360,28 @@ if _HAS_PYQT5:
 
             /* ── 下拉框 ──────────────────── */
             QComboBox {{
-                background-color: #ffffff;
-                color: #202124;
-                border: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(7)} {s(12)};
                 min-width: {s(180)};
                 font-size: {s(14)};
             }}
             QComboBox:hover {{
-                border-color: #c4c7cc;
+                border-color: {c["border"]};
             }}
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: {s(28)};
-                border-left: 1px solid #e8eaed;
+                border-left: 1px solid {c["hover2"]};
             }}
             QComboBox QAbstractItemView {{
-                background-color: #ffffff;
-                color: #202124;
-                selection-background-color: #e8f0fe;
-                border: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                selection-background-color: {c["select"]};
+                border: 1px solid {c["border"]};
                 outline: none;
                 padding: {s(4)} 0;
                 font-size: {s(14)};
@@ -358,7 +389,7 @@ if _HAS_PYQT5:
 
             /* ── 分隔条 ──────────────────── */
             QSplitter::handle {{
-                background-color: #dadce0;
+                background-color: {c["border"]};
             }}
             QSplitter::handle:vertical {{
                 height: 1px;
@@ -366,10 +397,10 @@ if _HAS_PYQT5:
 
             /* ── 树形/表格 ──────────────── */
             QTreeWidget {{
-                background-color: #ffffff;
-                color: #202124;
-                border: 1px solid #dadce0;
-                alternate-background-color: #fafbfc;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                border: 1px solid {c["border"]};
+                alternate-background-color: {c["surface2"]};
                 outline: none;
                 font-size: {s(13)};
             }}
@@ -378,19 +409,19 @@ if _HAS_PYQT5:
                 min-height: {s(28)};
             }}
             QTreeWidget::item:selected {{
-                background-color: #e8f0fe;
+                background-color: {c["select"]};
                 color: #1a73e8;
             }}
             QTreeWidget::item:hover {{
-                background-color: #f1f3f4;
+                background-color: {c["hover"]};
             }}
             QHeaderView::section {{
-                background-color: #ffffff;
-                color: #5f6368;
+                background-color: {c["surface"]};
+                color: {c["text2"]};
                 padding: {s(8)} {s(12)};
                 border: none;
-                border-right: 1px solid #e8eaed;
-                border-bottom: 1px solid #dadce0;
+                border-right: 1px solid {c["hover2"]};
+                border-bottom: 1px solid {c["border"]};
                 font-weight: 600;
                 font-size: {s(12)};
                 letter-spacing: 0.3px;
@@ -404,7 +435,7 @@ if _HAS_PYQT5:
                 margin: {s(4)} 0;
             }}
             QScrollBar::handle:vertical {{
-                background-color: #c4c7cc;
+                background-color: {c["border"]};
                 border-radius: {s(4)};
                 min-height: {s(32)};
             }}
@@ -421,7 +452,7 @@ if _HAS_PYQT5:
                 margin: 0 {s(4)};
             }}
             QScrollBar::handle:horizontal {{
-                background-color: #c4c7cc;
+                background-color: {c["border"]};
                 border-radius: {s(4)};
                 min-width: {s(32)};
             }}
@@ -435,39 +466,40 @@ if _HAS_PYQT5:
 
             /* ── 状态栏 ──────────────────── */
             QStatusBar {{
-                background-color: #ffffff;
-                color: #5f6368;
-                border-top: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text2"]};
+                border-top: 1px solid {c["border"]};
                 padding: {s(4)} {s(14)};
                 font-size: {s(13)};
             }}
 
             /* ── 文本视图 ──────────────── */
             QTextEdit {{
-                background-color: #ffffff;
-                color: #202124;
-                border: 1px solid #dadce0;
+                background-color: {c["surface"]};
+                color: {c["text"]};
+                border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 font-family: "SF Mono", "Consolas", "Courier New", monospace;
                 font-size: {s(13)};
-                selection-background-color: #c7dbf9;
+                selection-background-color: {c["select"]};
             }}
 
             /* ── 标签 ──────────────────── */
             QLabel {{
                 background-color: transparent;
-                color: #5f6368;
+                color: {c["text2"]};
                 font-size: {s(14)};
             }}
             """)
 
             p = self.palette()
-            p.setColor(QPalette.Window, QColor("#f8f9fa"))
-            p.setColor(QPalette.WindowText, QColor("#202124"))
-            p.setColor(QPalette.Base, QColor("#ffffff"))
-            p.setColor(QPalette.Text, QColor("#202124"))
-            p.setColor(QPalette.Button, QColor("#ffffff"))
-            p.setColor(QPalette.ButtonText, QColor("#202124"))
+            _dark = self._dark
+            p.setColor(QPalette.Window, QColor("#2d2d2d" if _dark else "#f8f9fa"))
+            p.setColor(QPalette.WindowText, QColor("#e0e0e0" if _dark else "#202124"))
+            p.setColor(QPalette.Base, QColor("#2d2d2d" if _dark else "#ffffff"))
+            p.setColor(QPalette.Text, QColor("#e0e0e0" if _dark else "#202124"))
+            p.setColor(QPalette.Button, QColor("#2d2d2d" if _dark else "#ffffff"))
+            p.setColor(QPalette.ButtonText, QColor("#e0e0e0" if _dark else "#202124"))
             p.setColor(QPalette.Highlight, QColor("#1a73e8"))
             p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
             self.setPalette(p)
@@ -687,7 +719,7 @@ if _HAS_PYQT5:
             dlg.resize(int(620 * z), int(600 * z))
             dlg.setMinimumSize(int(480 * z), int(400 * z))
             dlg.setStyleSheet(f"""
-                QDialog {{ background-color: #f8f9fa; }}
+                QDialog {{ background-color: {c["bg"]}; }}
                 QTextEdit {{ font-size: {self._s(13)}; }}
             """)
             layout = QVBoxLayout(dlg)
