@@ -136,6 +136,11 @@ if _HAS_PYQT5:
             self.btn_clear.clicked.connect(self._on_clear)
             tl.addWidget(self.btn_clear)
 
+            self.btn_open = QPushButton("打开PCAP")
+            self.btn_open.setObjectName("btnOpen")
+            self.btn_open.clicked.connect(self._on_open_pcap)
+            tl.addWidget(self.btn_open)
+
             tl.addSpacing(20)
 
             tl.addWidget(QLabel("过滤:"))
@@ -587,6 +592,43 @@ if _HAS_PYQT5:
                 return
             saved = save_packets(self.packets, path)
             self.status_label.setText(f"已保存到 {saved}")
+
+        def _on_open_pcap(self):
+            from PyQt5.QtWidgets import QFileDialog
+            from save.pcap_save import read_pcap
+            from protocols.parser_chain import ParserChain
+
+            path, _ = QFileDialog.getOpenFileName(
+                self, "打开 PCAP 文件", "",
+                "PCAP 文件 (*.pcap *.pcapng);;所有文件 (*)",
+            )
+            if not path:
+                return
+
+            try:
+                imported = read_pcap(path)
+                if not imported:
+                    QMessageBox.warning(self, "提示", "文件中没有可读的数据包")
+                    return
+
+                # 解析所有导入的包
+                for pkt in imported:
+                    pkt = ParserChain.parse(pkt)
+
+                # 追加到现有列表
+                start_no = self._capture_counter
+                for pkt in imported:
+                    start_no += 1
+                    pkt.no = start_no
+                    self.packets.append(pkt)
+                    self.packet_table.add_packet(pkt)
+                self._capture_counter = start_no
+
+                self.status_label.setText(
+                    f"已导入 {len(imported)} 个包，共 {self._capture_counter} 个包"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"无法打开文件:\n{e}")
 
         def _on_clear(self):
             self.packets.clear()

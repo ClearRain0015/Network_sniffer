@@ -148,3 +148,89 @@ def save_as_csv(packets: List[ParsedPacket], filepath: str) -> str:
             ])
 
     return filepath
+
+
+# ═══════════════════════════════════════════════
+#  PCAP 导入（回放查看）
+# ═══════════════════════════════════════════════
+
+def read_pcap(filepath: str) -> List[ParsedPacket]:
+    """读取 PCAP/PcapNg 文件，返回 ParsedPacket 列表"""
+    packets = []
+
+    try:
+        from scapy.all import rdpcap, Ether, IP, TCP, UDP, ICMP, ARP
+
+        raw_packets = rdpcap(filepath)
+        for idx, pkt in enumerate(raw_packets):
+            try:
+                raw = bytes(pkt)
+                parsed = ParsedPacket(
+                    no=idx + 1,
+                    timestamp=pkt.time if hasattr(pkt, 'time') else time.time(),
+                    raw_data=raw, length=len(raw),
+                )
+                if pkt.haslayer(Ether):
+                    eth = pkt[Ether]
+                    parsed.eth_src = eth.src
+                    parsed.eth_dst = eth.dst
+                    parsed.eth_type = eth.type
+                if pkt.haslayer(IP):
+                    ip = pkt[IP]
+                    parsed.ip_src = ip.src
+                    parsed.ip_dst = ip.dst
+                    parsed.ip_proto = ip.proto
+                    parsed.ip_len = ip.len
+                    parsed.ip_id = ip.id
+                    parsed.ip_flags = ip.flags
+                    parsed.ip_frag = ip.frag
+                    parsed.ip_ttl = ip.ttl
+                if pkt.haslayer(TCP):
+                    tcp = pkt[TCP]
+                    parsed.proto_name = "TCP"
+                    parsed.src_port = tcp.sport
+                    parsed.dst_port = tcp.dport
+                    parsed.tcp_flags = int(tcp.flags) if hasattr(tcp, 'flags') else 0
+                    parsed.tcp_seq = tcp.seq
+                    parsed.tcp_ack = tcp.ack
+                elif pkt.haslayer(UDP):
+                    udp = pkt[UDP]
+                    parsed.proto_name = "UDP"
+                    parsed.src_port = udp.sport
+                    parsed.dst_port = udp.dport
+                elif pkt.haslayer(ICMP):
+                    parsed.proto_name = "ICMP"
+                elif pkt.haslayer(ARP):
+                    parsed.proto_name = "ARP"
+                else:
+                    parsed.proto_name = "Other"
+                parsed.summary = pkt.summary() if hasattr(pkt, "summary") else ""
+                packets.append(parsed)
+            except Exception:
+                continue
+    except ImportError:
+        import dpkt
+        with open(filepath, "rb") as f:
+            for ts, buf in dpkt.pcap.Reader(f):
+                try:
+                    parsed = ParsedPacket(
+                        no=len(packets) + 1, timestamp=ts,
+                        raw_data=buf, length=len(buf),
+                    )
+                    if len(buf) >= 14:
+                        eth_obj = dpkt.ethernet.Ethernet(buf)
+                        parsed.eth_type = eth_obj.type
+                        if isinstance(eth_obj.data, dpkt.ip.IP):
+                            ip = eth_obj.data
+                            parsed.ip_src = ".".join(str(b) for b in ip.src)
+                            parsed.ip_dst = ".".join(str(b) for b in ip.dst)
+                            parsed.ip_proto = ip.p
+                            parsed.proto_name = {6: "TCP", 17: "UDP", 1: "ICMP"}.get(ip.p, "IP")
+                            if hasattr(ip.data, 'sport'):
+                                parsed.src_port = ip.data.sport
+                                parsed.dst_port = ip.data.dport
+                    packets.append(parsed)
+                except Exception:
+                    continue
+
+    return packets
