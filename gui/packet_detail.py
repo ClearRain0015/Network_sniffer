@@ -55,7 +55,7 @@ class PacketDetailPanel:
         # 下半：十六进制面板
         self._hex_view = QTextEdit()
         self._hex_view.setReadOnly(True)
-        self._hex_view.setFont(QFont("Consolas", 11))
+        self._hex_view.setFont(QFont("Consolas", 12))
         self._hex_view.setStyleSheet(
             "QTextEdit { background-color: #fafbfc; color: #202124; "
             "border: 1px solid #dadce0; border-radius: 8px; "
@@ -66,7 +66,7 @@ class PacketDetailPanel:
         # 底部：Payload 可读文本
         self._payload_view = QTextEdit()
         self._payload_view.setReadOnly(True)
-        self._payload_view.setFont(QFont("Consolas", 11))
+        self._payload_view.setFont(QFont("Consolas", 12))
         self._payload_view.setPlaceholderText("(无应用层数据)")
         widget.addWidget(self._payload_view)
 
@@ -100,7 +100,7 @@ class PacketDetailPanel:
         hex_frame = ttk.LabelFrame(frame, text="十六进制")
         hex_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
 
-        self._tk_hex = tk.Text(hex_frame, height=10, font=("Consolas", 11),
+        self._tk_hex = tk.Text(hex_frame, height=10, font=("Consolas", 12),
                                bg="#fafbfc", fg="#202124", insertbackground="#202124",
                                relief=tk.FLAT, padx=10, pady=8)
         self._tk_hex.pack(fill=tk.BOTH, expand=True)

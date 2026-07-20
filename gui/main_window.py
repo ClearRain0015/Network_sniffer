@@ -198,7 +198,9 @@ if _HAS_PYQT5:
 
             self.btn_dark = QPushButton("🌙")
             self.btn_dark.setToolTip("切换暗色模式")
-            self.btn_dark.setFixedWidth(36)
+            self.btn_dark.setFixedWidth(42)
+            self.btn_dark.setFixedHeight(36)
+            self.btn_dark.setStyleSheet("font-size: 18px;")
             self.btn_dark.clicked.connect(self._toggle_dark)
             tl.addWidget(self.btn_dark)
 
@@ -271,7 +273,7 @@ if _HAS_PYQT5:
                 background-color: {c["bg"]};
                 color: {c["text"]};
                 font-family: "Google Sans", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-                font-size: {s(14)};
+                font-size: {s(16)};
             }}
 
             /* ── 工具栏 ───────────────────── */
@@ -284,7 +286,7 @@ if _HAS_PYQT5:
             /* ── 缩放标签 ───────────────── */
             QLabel#zoomLabel {{
                 color: {c["text"]};
-                font-size: {s(13)};
+                font-size: {s(15)};
                 font-weight: 500;
             }}
 
@@ -296,7 +298,7 @@ if _HAS_PYQT5:
                 border-radius: {s(8)};
                 padding: {s(7)} {s(18)};
                 min-height: {s(32)};
-                font-size: {s(13)};
+                font-size: {s(15)};
                 font-weight: 500;
                 letter-spacing: 0.2px;
             }}
@@ -335,7 +337,7 @@ if _HAS_PYQT5:
                 border-radius: {s(4)};
                 padding: {s(4)} {s(6)};
                 min-height: {s(28)};
-                font-size: {s(16)};
+                font-size: {s(18)};
                 font-weight: 600;
             }}
             QPushButton#btnZoom:hover {{
@@ -349,7 +351,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(8)} {s(12)};
-                font-size: {s(14)};
+                font-size: {s(18)};
                 selection-background-color: {c["select"]};
             }}
             QLineEdit:focus {{
@@ -366,7 +368,7 @@ if _HAS_PYQT5:
                 border-radius: {s(8)};
                 padding: {s(7)} {s(12)};
                 min-width: {s(180)};
-                font-size: {s(14)};
+                font-size: {s(18)};
             }}
             QComboBox:hover {{
                 border-color: {c["border"]};
@@ -384,7 +386,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 outline: none;
                 padding: {s(4)} 0;
-                font-size: {s(14)};
+                font-size: {s(18)};
             }}
 
             /* ── 分隔条 ──────────────────── */
@@ -402,7 +404,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 alternate-background-color: {c["surface2"]};
                 outline: none;
-                font-size: {s(13)};
+                font-size: {s(15)};
             }}
             QTreeWidget::item {{
                 padding: {s(5)} {s(10)};
@@ -423,7 +425,7 @@ if _HAS_PYQT5:
                 border-right: 1px solid {c["hover2"]};
                 border-bottom: 1px solid {c["border"]};
                 font-weight: 600;
-                font-size: {s(12)};
+                font-size: {s(18)};
                 letter-spacing: 0.3px;
                 text-transform: uppercase;
             }}
@@ -470,7 +472,7 @@ if _HAS_PYQT5:
                 color: {c["text2"]};
                 border-top: 1px solid {c["border"]};
                 padding: {s(4)} {s(14)};
-                font-size: {s(13)};
+                font-size: {s(15)};
             }}
 
             /* ── 文本视图 ──────────────── */
@@ -480,7 +482,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 font-family: "SF Mono", "Consolas", "Courier New", monospace;
-                font-size: {s(13)};
+                font-size: {s(15)};
                 selection-background-color: {c["select"]};
             }}
 
@@ -488,7 +490,7 @@ if _HAS_PYQT5:
             QLabel {{
                 background-color: transparent;
                 color: {c["text2"]};
-                font-size: {s(14)};
+                font-size: {s(18)};
             }}
             """)
 
