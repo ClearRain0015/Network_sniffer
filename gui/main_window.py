@@ -204,6 +204,11 @@ if _HAS_PYQT5:
             self.btn_dark.clicked.connect(self._toggle_dark)
             tl.addWidget(self.btn_dark)
 
+            self.zoom_label = QLabel("100%")
+            self.zoom_label.setObjectName("zoomLabel")
+            self.zoom_label.setToolTip("Ctrl+滚轮 / Ctrl++- 缩放界面")
+            tl.addWidget(self.zoom_label)
+
             # 中央区域
             splitter = QSplitter(Qt.Vertical)
 
@@ -511,7 +516,8 @@ if _HAS_PYQT5:
         def _apply_zoom(self):
             """Re-apply theme with current zoom and update the label."""
             self._apply_theme()
-            self.zoom_label.setText(f"{self._zoom}%")
+            if hasattr(self, "zoom_label") and self.zoom_label:
+                self.zoom_label.setText(f"{self._zoom}%")
 
         def _zoom_in(self):
             if self._zoom >= 200:
