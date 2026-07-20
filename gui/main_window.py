@@ -22,6 +22,9 @@ from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
 from statistics.alerts import SynFloodDetector, detect_syn_alerts
+from analysis.http_pairs import build_http_pairs, format_http_pairs
+from capture.replay import inject_hex_packet, replay_packet
+from i18n import LANGUAGES, t as translate
 
 # ═══════════════════════════════════════════════════════════
 #  全局配置（修改这里即可调整参数）
@@ -82,6 +85,10 @@ if _HAS_PYQT5:
             self.setMinimumSize(960, 600)
 
             self._zoom = 100  # 缩放百分比，100=默认
+            self._dark_mode = False
+            self._lang = "zh"
+            self._search_matches = []
+            self._search_pos = -1
 
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
@@ -171,7 +178,21 @@ if _HAS_PYQT5:
             self.btn_filter_help.setFixedWidth(28)
             self.btn_filter_help.clicked.connect(self._on_filter_help)
             tl.addWidget(self.btn_filter_help)
+            tl.addSpacing(10)
 
+            self.search_input = QLineEdit()
+            self.search_input.setPlaceholderText("搜索包/IP/协议/Payload")
+            self.search_input.setMinimumWidth(170)
+            self.search_input.returnPressed.connect(self._on_search_next)
+            tl.addWidget(self.search_input)
+
+            self.btn_search_prev = QPushButton("上一个")
+            self.btn_search_prev.clicked.connect(self._on_search_prev)
+            tl.addWidget(self.btn_search_prev)
+
+            self.btn_search_next = QPushButton("下一个")
+            self.btn_search_next.clicked.connect(self._on_search_next)
+            tl.addWidget(self.btn_search_next)
             tl.addStretch()
 
             # — 分析区 —
@@ -194,6 +215,29 @@ if _HAS_PYQT5:
             self.btn_alerts.setToolTip("SYN 洪水检测")
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
+
+            self.btn_http_pairs = QPushButton("HTTP配对")
+            self.btn_http_pairs.clicked.connect(self._on_show_http_pairs)
+            tl.addWidget(self.btn_http_pairs)
+
+            self.btn_replay = QPushButton("重放")
+            self.btn_replay.clicked.connect(self._on_replay_selected)
+            tl.addWidget(self.btn_replay)
+
+            self.btn_inject = QPushButton("注入")
+            self.btn_inject.clicked.connect(self._on_inject_hex)
+            tl.addWidget(self.btn_inject)
+
+            self.btn_theme = QPushButton("暗色")
+            self.btn_theme.clicked.connect(self._toggle_theme)
+            tl.addWidget(self.btn_theme)
+
+            self.lang_combo = QComboBox()
+            self.lang_combo.setMinimumWidth(95)
+            for code, label in LANGUAGES.items():
+                self.lang_combo.addItem(label, code)
+            self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
+            tl.addWidget(self.lang_combo)
 
             # 中央区域
             splitter = QSplitter(Qt.Vertical)
@@ -218,9 +262,16 @@ if _HAS_PYQT5:
 
             # 状态栏
             self.statusbar = QStatusBar()
+            self.statusbar.setObjectName("mainStatusBar")
+            self.statusbar.setMinimumHeight(30)
             self.setStatusBar(self.statusbar)
             self.status_label = QLabel("就绪 — 请选择网卡并点击「开始抓包」")
-            self.statusbar.addWidget(self.status_label)
+            self.status_label.setObjectName("statusLabel")
+            self.status_label.setMinimumHeight(28)
+            self.status_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self.statusbar.addWidget(self.status_label, 1)
+            self._refresh_texts()
 
         # ── 主题 & 缩放 ──────────────────────
 
@@ -435,11 +486,19 @@ if _HAS_PYQT5:
 
             /* ── 状态栏 ──────────────────── */
             QStatusBar {{
-                background-color: #ffffff;
-                color: #5f6368;
-                border-top: 1px solid #dadce0;
-                padding: {s(4)} {s(14)};
-                font-size: {s(13)};
+                background-color: #eef3fb;
+                color: #174ea6;
+                border-top: 1px solid #b8c7e0;
+                padding: {s(5)} {s(14)};
+                font-size: {s(14)};
+                font-weight: 600;
+                min-height: {s(30)};
+            }}
+            QLabel#statusLabel {{
+                color: #174ea6;
+                font-size: {s(14)};
+                font-weight: 600;
+                padding-left: {s(4)};
             }}
 
             /* ── 文本视图 ──────────────── */
@@ -471,6 +530,78 @@ if _HAS_PYQT5:
             p.setColor(QPalette.Highlight, QColor("#1a73e8"))
             p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
             self.setPalette(p)
+
+            if self._dark_mode:
+                self.setStyleSheet(self.styleSheet() + f"""
+                QMainWindow, QWidget {{
+                    background-color: #202124;
+                    color: #e8eaed;
+                }}
+                QWidget#toolbar, QStatusBar {{
+                    background-color: #2b2c30;
+                    border-color: #3c4043;
+                    color: #e8eaed;
+                }}
+                QStatusBar {{
+                    background-color: #12314f;
+                    border-top: 1px solid #315d86;
+                    color: #d2e3fc;
+                    min-height: {s(30)};
+                }}
+                QLabel#statusLabel {{
+                    color: #d2e3fc;
+                    font-weight: 600;
+                }}
+                QTreeWidget, QTextEdit, QLineEdit, QComboBox {{
+                    background-color: #17181c;
+                    color: #e8eaed;
+                    border-color: #3c4043;
+                    selection-background-color: #174ea6;
+                }}
+                QTreeWidget::item:selected {{
+                    background-color: #174ea6;
+                    color: #ffffff;
+                }}
+                QTreeWidget::item:hover {{
+                    background-color: #2b2c30;
+                }}
+                QHeaderView::section {{
+                    background-color: #2b2c30;
+                    color: #e8eaed;
+                    border-color: #3c4043;
+                }}
+                QPushButton {{
+                    background-color: #2b2c30;
+                    color: #e8eaed;
+                    border-color: #5f6368;
+                }}
+                QPushButton:hover {{
+                    background-color: #3c4043;
+                    border-color: #8ab4f8;
+                }}
+                QPushButton#btnStart {{
+                    background-color: #8ab4f8;
+                    color: #202124;
+                }}
+                QPushButton#btnStop {{
+                    background-color: #f28b82;
+                    color: #202124;
+                }}
+                QLabel {{
+                    color: #bdc1c6;
+                }}
+                """)
+
+                p = self.palette()
+                p.setColor(QPalette.Window, QColor("#202124"))
+                p.setColor(QPalette.WindowText, QColor("#e8eaed"))
+                p.setColor(QPalette.Base, QColor("#17181c"))
+                p.setColor(QPalette.Text, QColor("#e8eaed"))
+                p.setColor(QPalette.Button, QColor("#2b2c30"))
+                p.setColor(QPalette.ButtonText, QColor("#e8eaed"))
+                p.setColor(QPalette.Highlight, QColor("#8ab4f8"))
+                p.setColor(QPalette.HighlightedText, QColor("#202124"))
+                self.setPalette(p)
 
         # ── 缩放 ──────────────────────────────
 
@@ -645,6 +776,17 @@ if _HAS_PYQT5:
                 self.sniff_thread.sniffer.set_filter(bpf)
             self.status_label.setText(f"过滤器: {bpf if bpf else '(无)'}")
 
+        def _set_status(self, text: str):
+            self.status_label.setText(text)
+            self.status_label.setToolTip(text)
+
+        def _packet_status_text(self, packet: ParsedPacket) -> str:
+            return (
+                f"当前包 No={packet.no}  {packet.proto_name or '-'}  "
+                f"{packet.src_str} -> {packet.dst_str}  Len={packet.length_str}  "
+                f"{packet.info or packet.summary or ''}"
+            )
+
         def _on_filter_help(self):
             help_text = (
                 "═══════ 过滤语法帮助 ═══════\n\n"
@@ -674,7 +816,123 @@ if _HAS_PYQT5:
                 "■ 清空过滤框点「应用」恢复全部显示"
             )
             QMessageBox.information(self, "过滤帮助", help_text)
+        def _t(self, key: str) -> str:
+            return translate(key, self._lang)
 
+        def _refresh_texts(self):
+            self.setWindowTitle(self._t("window_title"))
+            self.btn_search_prev.setText(self._t("prev"))
+            self.btn_search_next.setText(self._t("next"))
+            self.btn_theme.setText(self._t("light") if self._dark_mode else self._t("dark"))
+            self.btn_http_pairs.setText(self._t("http_pairs"))
+            self.btn_replay.setText(self._t("replay"))
+            self.btn_inject.setText(self._t("inject"))
+            self.search_input.setPlaceholderText("Search packet/IP/protocol/payload" if self._lang == "en" else "搜索包/IP/协议/Payload")
+
+        def _on_language_changed(self):
+            self._lang = self.lang_combo.currentData() or "zh"
+            self._refresh_texts()
+            self.status_label.setText(self._t("ready"))
+
+        def _toggle_theme(self):
+            self._dark_mode = not self._dark_mode
+            self._apply_theme()
+            self._refresh_texts()
+
+        def _search(self, forward: bool = True):
+            query = self.search_input.text().strip()
+            matches = self.packet_table.find_indices(query)
+            if not query or not matches:
+                self._search_matches = []
+                self._search_pos = -1
+                self.status_label.setText(self._t("no_match"))
+                return
+
+            if matches != self._search_matches:
+                self._search_matches = matches
+                self._search_pos = 0 if forward else len(matches) - 1
+            else:
+                step = 1 if forward else -1
+                self._search_pos = (self._search_pos + step) % len(matches)
+
+            row = self._search_matches[self._search_pos]
+            self.packet_table.select_row(row)
+            self.status_label.setText(
+                f"{self._t('search')}: {self._search_pos + 1}/{len(matches)} -> No {self.packets[row].no}"
+            )
+
+        def _on_search_next(self):
+            self._search(True)
+
+        def _on_search_prev(self):
+            self._search(False)
+
+        def _on_show_http_pairs(self):
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
+            pairs = build_http_pairs(self.packets)
+            dlg = QDialog(self)
+            dlg.setWindowTitle(self._t("http_pairs"))
+            dlg.resize(720, 520)
+            layout = QVBoxLayout(dlg)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setPlainText(format_http_pairs(pairs))
+            text_edit.setFont(QFont("Consolas", 10))
+            layout.addWidget(text_edit)
+            dlg.exec_()
+
+        def _current_iface_name(self):
+            idx = self.iface_combo.currentIndex()
+            return self._iface_names[idx] if idx >= 0 and idx < len(self._iface_names) else None
+
+        def _on_replay_selected(self):
+            packet = self.packet_table.current_packet()
+            if packet is None:
+                QMessageBox.information(self, self._t("replay"), self._t("no_packets"))
+                return
+            reply = QMessageBox.question(
+                self,
+                self._t("replay"),
+                f"Replay selected packet No {packet.no} ({packet.length} bytes)?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+            try:
+                result = replay_packet(packet, iface=self._current_iface_name())
+                self._set_status(
+                    f"Replayed {result['count']} packet(s), {result['bytes']} bytes, mode={result['mode']}"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, self._t("replay"), str(e))
+
+        def _on_inject_hex(self):
+            from PyQt5.QtWidgets import QInputDialog
+            hex_text, ok = QInputDialog.getMultiLineText(
+                self,
+                self._t("inject"),
+                "Paste packet bytes as hex:",
+                "",
+            )
+            if not ok or not hex_text.strip():
+                return
+            reply = QMessageBox.question(
+                self,
+                self._t("inject"),
+                "Send this raw packet once?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+            try:
+                result = inject_hex_packet(hex_text, iface=self._current_iface_name())
+                self._set_status(
+                    f"Injected {result['count']} packet(s), {result['bytes']} bytes, mode={result['mode']}"
+                )
+            except Exception as e:
+                QMessageBox.critical(self, self._t("inject"), str(e))
         def _on_show_stats(self):
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
             from statistics.flow_statistics import compute_statistics, format_statistics_html
@@ -772,6 +1030,13 @@ if _HAS_PYQT5:
                 self.packets.append(packet)
                 self.packet_table.add_packet(packet)
 
+            with self._pending_lock:
+                pending_count = len(self._pending_packets)
+            self._set_status(
+                f"监听中 — 共捕获 {self._capture_counter} 个数据包，"
+                f"本批处理 {len(batch)} 个，待处理 {pending_count} 个"
+            )
+
             # ── 自动告警：检测到 SYN 洪水就弹窗 ──
             alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
             if alerts and not self._auto_alerted:
@@ -785,6 +1050,7 @@ if _HAS_PYQT5:
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
+            self._set_status(self._packet_status_text(packet))
 
         def _on_packet_context_menu(self, packet: ParsedPacket, action: str):
             if action == "follow_tcp":

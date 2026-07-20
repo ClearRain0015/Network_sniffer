@@ -187,3 +187,67 @@ class PacketTable:
         else:
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
+
+    def current_index(self) -> int:
+        """Return the selected row index, or -1 when nothing is selected."""
+        if self.backend == "pyqt5":
+            items = self._tree.selectedItems()
+            if not items:
+                return -1
+            return self._tree.indexOfTopLevelItem(items[0])
+
+        selection = self._tk_tree.selection()
+        if not selection:
+            return -1
+        return self._tk_tree.index(selection[0])
+
+    def current_packet(self) -> Optional[ParsedPacket]:
+        idx = self.current_index()
+        if 0 <= idx < len(self._packets):
+            return self._packets[idx]
+        return None
+
+    def select_row(self, index: int) -> bool:
+        """Select and scroll to a row by index."""
+        if not (0 <= index < len(self._packets)):
+            return False
+
+        if self.backend == "pyqt5":
+            item = self._tree.topLevelItem(index)
+            if not item:
+                return False
+            self._tree.setCurrentItem(item)
+            self._tree.scrollToItem(item)
+            return True
+
+        children = self._tk_tree.get_children()
+        if index >= len(children):
+            return False
+        item = children[index]
+        self._tk_tree.selection_set(item)
+        self._tk_tree.focus(item)
+        self._tk_tree.see(item)
+        self._on_tk_select(None)
+        return True
+
+    def find_indices(self, query: str) -> list:
+        """Find rows whose visible values contain query, case-insensitively."""
+        needle = (query or "").strip().lower()
+        if not needle:
+            return []
+
+        matches = []
+        for idx, packet in enumerate(self._packets):
+            haystack = " ".join([
+                str(packet.no),
+                packet.timestamp_str,
+                packet.src_str,
+                packet.dst_str,
+                packet.proto_name,
+                packet.length_str,
+                packet.info or packet.summary or "",
+                packet.payload_text or "",
+            ]).lower()
+            if needle in haystack:
+                matches.append(idx)
+        return matches

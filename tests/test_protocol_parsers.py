@@ -114,6 +114,27 @@ class ProtocolParserTests(unittest.TestCase):
         self.assertEqual(packet.network_offset, 0)
         self.assertEqual(packet.payload, payload)
 
+    def test_raw_ipv4_http_payload_is_parsed(self):
+        payload = b"GET /raw HTTP/1.1\r\nHost: raw.example\r\n\r\n"
+        tcp = struct.pack(
+            "!HHIIHHHH",
+            12345,
+            80,
+            100,
+            200,
+            (5 << 12) | 0x18,
+            4096,
+            0,
+            0,
+        ) + payload
+
+        packet = parsed(ipv4(tcp, proto=6))
+
+        self.assertFalse(packet.has_layer("Ethernet"))
+        self.assertTrue(packet.has_layer("HTTP"))
+        self.assertEqual(packet.payload, payload)
+        self.assertEqual(packet.get_layer("HTTP").fields["Host"], "raw.example")
+
 
 if __name__ == "__main__":
     unittest.main()

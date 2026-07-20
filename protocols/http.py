@@ -37,17 +37,7 @@ class HTTPParser:
         --------------
         从 TCP payload 中提取 HTTP 头部文本。
         """
-        raw = packet.raw_data[14:]
-        ip_ihl = (raw[0] & 0x0F) * 4
-        tcp_offset = 14 + ip_ihl
-        tcp_raw = packet.raw_data[tcp_offset:]
-
-        if len(tcp_raw) < 20:
-            return packet
-
-        tcp_data_offset = ((tcp_raw[12] >> 4) & 0x0F) * 4
-        http_payload = tcp_raw[tcp_data_offset:]
-
+        http_payload = packet.payload
         if len(http_payload) < 4:
             return packet
 
