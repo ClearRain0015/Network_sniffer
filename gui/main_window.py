@@ -185,6 +185,11 @@ if _HAS_PYQT5:
             self.btn_trend.clicked.connect(self._on_show_trend)
             tl.addWidget(self.btn_trend)
 
+            self.btn_expert = QPushButton("🔍 专家")
+            self.btn_expert.setToolTip("专家信息面板")
+            self.btn_expert.clicked.connect(self._on_show_expert)
+            tl.addWidget(self.btn_expert)
+
             self.btn_alerts = QPushButton("⚠ 告警")
             self.btn_alerts.setToolTip("SYN 洪水检测")
             self.btn_alerts.clicked.connect(self._on_show_alerts)
@@ -721,6 +726,27 @@ if _HAS_PYQT5:
                 return
             text = "\n".join(a[2] for a in alerts[-10:])
             QMessageBox.warning(self, "实时告警", text)
+
+        def _on_show_expert(self):
+            from statistics.expert_info import analyze_packets, format_expert_info
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
+
+            if not self.packets:
+                QMessageBox.information(self, "专家信息", "没有数据包可分析")
+                return
+            items = analyze_packets(self.packets)
+            report = format_expert_info(items)
+            dlg = QDialog(self)
+            dlg.setWindowTitle("专家信息面板")
+            dlg.resize(700, 500)
+            layout = QVBoxLayout(dlg)
+            editor = QTextEdit()
+            editor.setReadOnly(True)
+            editor.setPlainText(report)
+            from PyQt5.QtGui import QFont
+            editor.setFont(QFont("Consolas", 11))
+            layout.addWidget(editor)
+            dlg.exec_()
 
         def _on_packet_arrived(self, packet: ParsedPacket):
             with self._pending_lock:
