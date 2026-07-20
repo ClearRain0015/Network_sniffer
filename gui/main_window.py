@@ -198,16 +198,11 @@ if _HAS_PYQT5:
 
             self.btn_dark = QPushButton("🌙")
             self.btn_dark.setToolTip("切换暗色模式")
-            self.btn_dark.setFixedWidth(42)
-            self.btn_dark.setFixedHeight(36)
-            self.btn_dark.setStyleSheet("font-size: 18px;")
+            self.btn_dark.setFixedWidth(52)
+            self.btn_dark.setFixedHeight(44)
+            self.btn_dark.setStyleSheet("font-size: 24px;")
             self.btn_dark.clicked.connect(self._toggle_dark)
             tl.addWidget(self.btn_dark)
-
-            self.zoom_label = QLabel("100%")
-            self.zoom_label.setObjectName("zoomLabel")
-            self.zoom_label.setToolTip("Ctrl+滚轮 / Ctrl++- 缩放界面")
-            tl.addWidget(self.zoom_label)
 
             # 中央区域
             splitter = QSplitter(Qt.Vertical)
@@ -231,10 +226,22 @@ if _HAS_PYQT5:
             self.setCentralWidget(container)
 
             # 状态栏
+            from PyQt5.QtWidgets import QSlider
             self.statusbar = QStatusBar()
             self.setStatusBar(self.statusbar)
             self.status_label = QLabel("就绪 — 请选择网卡并点击「开始抓包」")
             self.statusbar.addWidget(self.status_label)
+
+            self.zoom_slider = QSlider(Qt.Horizontal)
+            self.zoom_slider.setRange(80, 200)
+            self.zoom_slider.setValue(self._zoom)
+            self.zoom_slider.setFixedWidth(120)
+            self.zoom_slider.setToolTip("缩放 {0}% (Ctrl+滚轮)".format(self._zoom))
+            self.zoom_slider.valueChanged.connect(self._on_zoom_slider)
+            self.zoom_label = QLabel("100%")
+            self.zoom_label.setObjectName("zoomLabel")
+            self.statusbar.addPermanentWidget(self.zoom_label)
+            self.statusbar.addPermanentWidget(self.zoom_slider)
 
         # ── 主题 & 缩放 ──────────────────────
 
@@ -278,7 +285,7 @@ if _HAS_PYQT5:
                 background-color: {c["bg"]};
                 color: {c["text"]};
                 font-family: "Google Sans", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-                font-size: {s(16)};
+                font-size: {s(18)};
             }}
 
             /* ── 工具栏 ───────────────────── */
@@ -291,7 +298,7 @@ if _HAS_PYQT5:
             /* ── 缩放标签 ───────────────── */
             QLabel#zoomLabel {{
                 color: {c["text"]};
-                font-size: {s(15)};
+                font-size: {s(17)};
                 font-weight: 500;
             }}
 
@@ -303,7 +310,7 @@ if _HAS_PYQT5:
                 border-radius: {s(8)};
                 padding: {s(7)} {s(18)};
                 min-height: {s(32)};
-                font-size: {s(15)};
+                font-size: {s(17)};
                 font-weight: 500;
                 letter-spacing: 0.2px;
             }}
@@ -342,7 +349,7 @@ if _HAS_PYQT5:
                 border-radius: {s(4)};
                 padding: {s(4)} {s(6)};
                 min-height: {s(28)};
-                font-size: {s(18)};
+                font-size: {s(20)};
                 font-weight: 600;
             }}
             QPushButton#btnZoom:hover {{
@@ -356,7 +363,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 padding: {s(8)} {s(12)};
-                font-size: {s(18)};
+                font-size: {s(20)};
                 selection-background-color: {c["select"]};
             }}
             QLineEdit:focus {{
@@ -373,7 +380,7 @@ if _HAS_PYQT5:
                 border-radius: {s(8)};
                 padding: {s(7)} {s(12)};
                 min-width: {s(180)};
-                font-size: {s(18)};
+                font-size: {s(20)};
             }}
             QComboBox:hover {{
                 border-color: {c["border"]};
@@ -391,7 +398,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 outline: none;
                 padding: {s(4)} 0;
-                font-size: {s(18)};
+                font-size: {s(20)};
             }}
 
             /* ── 分隔条 ──────────────────── */
@@ -409,7 +416,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 alternate-background-color: {c["surface2"]};
                 outline: none;
-                font-size: {s(15)};
+                font-size: {s(17)};
             }}
             QTreeWidget::item {{
                 padding: {s(5)} {s(10)};
@@ -430,7 +437,7 @@ if _HAS_PYQT5:
                 border-right: 1px solid {c["hover2"]};
                 border-bottom: 1px solid {c["border"]};
                 font-weight: 600;
-                font-size: {s(18)};
+                font-size: {s(20)};
                 letter-spacing: 0.3px;
                 text-transform: uppercase;
             }}
@@ -477,7 +484,7 @@ if _HAS_PYQT5:
                 color: {c["text2"]};
                 border-top: 1px solid {c["border"]};
                 padding: {s(4)} {s(14)};
-                font-size: {s(15)};
+                font-size: {s(17)};
             }}
 
             /* ── 文本视图 ──────────────── */
@@ -487,7 +494,7 @@ if _HAS_PYQT5:
                 border: 1px solid {c["border"]};
                 border-radius: {s(8)};
                 font-family: "SF Mono", "Consolas", "Courier New", monospace;
-                font-size: {s(15)};
+                font-size: {s(17)};
                 selection-background-color: {c["select"]};
             }}
 
@@ -495,7 +502,7 @@ if _HAS_PYQT5:
             QLabel {{
                 background-color: transparent;
                 color: {c["text2"]};
-                font-size: {s(18)};
+                font-size: {s(20)};
             }}
             """)
 
@@ -513,11 +520,21 @@ if _HAS_PYQT5:
 
         # ── 缩放 ──────────────────────────────
 
-        def _apply_zoom(self):
-            """Re-apply theme with current zoom and update the label."""
+        def _on_zoom_slider(self, value):
+            """缩放滑块拖动"""
+            if value != self._zoom:
+                self._zoom = value
+                self._apply_zoom(for_slider=True)
+
+        def _apply_zoom(self, for_slider=False):
+            """Re-apply theme with current zoom and update the label/slider."""
             self._apply_theme()
             if hasattr(self, "zoom_label") and self.zoom_label:
                 self.zoom_label.setText(f"{self._zoom}%")
+            if not for_slider and hasattr(self, "zoom_slider") and self.zoom_slider:
+                self.zoom_slider.blockSignals(True)
+                self.zoom_slider.setValue(self._zoom)
+                self.zoom_slider.blockSignals(False)
 
         def _zoom_in(self):
             if self._zoom >= 200:
@@ -728,7 +745,7 @@ if _HAS_PYQT5:
             dlg.setMinimumSize(int(480 * z), int(400 * z))
             dlg.setStyleSheet(f"""
                 QDialog {{ background-color: {c["bg"]}; }}
-                QTextEdit {{ font-size: {self._s(13)}; }}
+                QTextEdit {{ font-size: {self._s(15)}; }}
             """)
             layout = QVBoxLayout(dlg)
             layout.setContentsMargins(int(8 * z), int(8 * z), int(8 * z), int(8 * z))
