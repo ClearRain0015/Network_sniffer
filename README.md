@@ -211,7 +211,37 @@ save_as_txt(packets, "output.txt")   # 可读文本
 save_as_csv(packets, "output.csv")   # Excel 可打开
 ```
 
-### 5. 流量统计
+### 5. PCAP 导入
+
+点击 **打开PCAP** 按钮，选择 `.pcap`/`.pcapng` 文件即可导入历史数据包。导入的包会自动解析并追加到当前列表，可与新抓的包一起分析。
+
+```python
+from save.pcap_save import read_pcap
+packets = read_pcap("capture.pcap")  # 读取文件
+```
+
+### 6. TCP 流跟踪
+
+类似 Wireshark 的 "Follow TCP Stream" 功能。在包列表中**右键点击任意 TCP 包**，选择 **"跟随 TCP 流"**，弹出窗口显示该连接的全部收发数据和方向：
+
+```
+══ TCP 流: 192.168.1.100:54321 ↔ 142.250.80.4:443  共 25 个包 ══
+
+[10:15:32.123456] → TCP SYN
+[10:15:32.234567] ← TCP SYN · ACK  
+[10:15:32.345678] → GET / HTTP/1.1
+       Host: www.google.com
+[10:15:32.456789] ← HTTP/1.1 200 OK
+       Content-Type: text/html
+```
+
+```python
+from statistics.tcp_stream import build_streams, find_stream
+streams = build_streams(packets)       # 列出所有 TCP 流
+stream = find_stream(packets, packet)  # 找到指定包的流
+```
+
+### 7. 流量统计
 
 点击 **统计** 按钮弹出统计报告，包含：
 
@@ -238,11 +268,11 @@ trend = compute_traffic_trend(packets, bucket_seconds=1)
 plot_traffic_trend(trend)
 ```
 
-### 6. 流量趋势图
+### 8. 流量趋势图
 
 点击工具栏 **趋势** 按钮，自动绘制按秒分桶的流量折线图。需要安装 matplotlib。
 
-### 7. SYN 洪水告警
+### 9. SYN 洪水告警
 
 工具栏右侧有 **告警** 按钮，点击检测当前已捕获数据包中的 SYN 洪水。
 

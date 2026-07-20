@@ -27,6 +27,7 @@ class PacketTable:
     def __init__(self, backend: str = "pyqt5"):
         self.backend = backend
         self.on_select: Optional[Callable[[ParsedPacket], None]] = None
+        self.on_context_menu: Optional[Callable[[ParsedPacket, str], None]] = None
         self._packets = []
         self.widget = None
 
@@ -62,10 +63,34 @@ class PacketTable:
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         header.setStretchLastSection(True)
 
+        tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        tree.customContextMenuRequested.connect(self._on_context_menu)
         tree.itemSelectionChanged.connect(self._on_selection_changed)
 
         self._tree = tree
         self.widget = tree
+
+    def _on_context_menu(self, pos):
+        """右键菜单"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        from PyQt5.QtCore import QPoint
+
+        item = self._tree.itemAt(pos)
+        if not item:
+            return
+        idx = self._tree.indexOfTopLevelItem(item)
+        if idx < 0 or idx >= len(self._packets):
+            return
+
+        packet = self._packets[idx]
+        menu = QMenu()
+        if packet.proto_name == "TCP":
+            act = QAction("跟随 TCP 流", menu)
+            act.triggered.connect(
+                lambda: self.on_context_menu and self.on_context_menu(packet, "follow_tcp")
+            )
+            menu.addAction(act)
+        menu.exec_(self._tree.viewport().mapToGlobal(pos))
 
     def _on_selection_changed(self):
         """PyQt5 选中行事件"""

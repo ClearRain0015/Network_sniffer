@@ -16,6 +16,7 @@ from .flow_statistics import (
     plot_traffic_trend,
 )
 from .alerts import SynFloodDetector, detect_syn_alerts
+from .tcp_stream import build_streams, find_stream, format_stream_text, TCPStream
 
 __all__ = [
     "compute_statistics",
@@ -25,4 +26,8 @@ __all__ = [
     "plot_traffic_trend",
     "SynFloodDetector",
     "detect_syn_alerts",
+    "build_streams",
+    "find_stream",
+    "format_stream_text",
+    "TCPStream",
 ]

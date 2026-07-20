@@ -107,91 +107,80 @@ if _HAS_PYQT5:
             toolbar = QWidget()
             toolbar.setObjectName("toolbar")
             tl = QHBoxLayout(toolbar)
-            tl.setContentsMargins(6, 6, 6, 6)
+            tl.setContentsMargins(8, 6, 8, 6)
 
+            # — 抓包区 —
             tl.addWidget(QLabel("网卡:"))
             self.iface_combo = QComboBox()
-            self.iface_combo.setMinimumWidth(180)
+            self.iface_combo.setMinimumWidth(160)
             self._refresh_interfaces()
             tl.addWidget(self.iface_combo)
 
-            self.btn_start = QPushButton("开始抓包")
-            self.btn_start.setObjectName("btnStart")
+            self.btn_start = QPushButton("▶ 开始")
+            self.btn_start.setToolTip("开始抓包")
             self.btn_start.clicked.connect(self._on_start)
             tl.addWidget(self.btn_start)
 
-            self.btn_stop = QPushButton("停止")
-            self.btn_stop.setObjectName("btnStop")
+            self.btn_stop = QPushButton("⏹ 停止")
+            self.btn_stop.setToolTip("停止抓包")
             self.btn_stop.setEnabled(False)
             self.btn_stop.clicked.connect(self._on_stop)
             tl.addWidget(self.btn_stop)
 
-            self.btn_save = QPushButton("保存PCAP")
-            self.btn_save.setObjectName("btnSave")
-            self.btn_save.clicked.connect(self._on_save)
-            tl.addWidget(self.btn_save)
+            vsep = QLabel("│")
+            vsep.setStyleSheet("color: #dadce0; font-size: 16px; margin: 0 4px;")
+            vsep.setFixedWidth(10)
+            tl.addWidget(vsep)
 
-            self.btn_clear = QPushButton("清空")
-            self.btn_clear.setObjectName("btnClear")
-            self.btn_clear.clicked.connect(self._on_clear)
-            tl.addWidget(self.btn_clear)
-
-            self.btn_open = QPushButton("打开PCAP")
-            self.btn_open.setObjectName("btnOpen")
+            # — 数据区 —
+            self.btn_open = QPushButton("📂 打开")
+            self.btn_open.setToolTip("打开 PCAP 文件")
             self.btn_open.clicked.connect(self._on_open_pcap)
             tl.addWidget(self.btn_open)
 
-            tl.addSpacing(20)
+            self.btn_save = QPushButton("💾 保存")
+            self.btn_save.setToolTip("保存为 PCAP")
+            self.btn_save.clicked.connect(self._on_save)
+            tl.addWidget(self.btn_save)
 
+            self.btn_clear = QPushButton("🗑 清空")
+            self.btn_clear.setToolTip("清空所有数据包")
+            self.btn_clear.clicked.connect(self._on_clear)
+            tl.addWidget(self.btn_clear)
+
+            vsep = QLabel("│")
+            vsep.setStyleSheet("color: #dadce0; font-size: 16px; margin: 0 4px;")
+            vsep.setFixedWidth(10)
+            tl.addWidget(vsep)
+
+            # — 过滤区 —
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
-            self.filter_input.setPlaceholderText("tcp, udp port 80, host 192.168.1.1 ...")
-            self.filter_input.setMinimumWidth(190)
+            self.filter_input.setPlaceholderText("tcp / udp port 80 / host 192.168.1.1 ...")
+            self.filter_input.setMinimumWidth(200)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
 
             self.btn_filter = QPushButton("应用")
-            self.btn_filter.setObjectName("btnFilter")
+            self.btn_filter.setToolTip("应用过滤表达式")
             self.btn_filter.clicked.connect(self._on_filter_apply)
             tl.addWidget(self.btn_filter)
 
             tl.addStretch()
 
-            # 缩放控件
-            self.btn_zoom_out = QPushButton("−")
-            self.btn_zoom_out.setObjectName("btnZoom")
-            self.btn_zoom_out.setFixedWidth(32)
-            self.btn_zoom_out.setToolTip("缩小 (Ctrl+−)")
-            self.btn_zoom_out.clicked.connect(self._zoom_out)
-            tl.addWidget(self.btn_zoom_out)
-
-            self.zoom_label = QLabel("100%")
-            self.zoom_label.setObjectName("zoomLabel")
-            self.zoom_label.setAlignment(Qt.AlignCenter)
-            self.zoom_label.setFixedWidth(44)
-            tl.addWidget(self.zoom_label)
-
-            self.btn_zoom_in = QPushButton("+")
-            self.btn_zoom_in.setObjectName("btnZoom")
-            self.btn_zoom_in.setFixedWidth(32)
-            self.btn_zoom_in.setToolTip("放大 (Ctrl++)")
-            self.btn_zoom_in.clicked.connect(self._zoom_in)
-            tl.addWidget(self.btn_zoom_in)
-
-            tl.addSpacing(10)
-
-            self.btn_stats = QPushButton("统计")
-            self.btn_stats.setObjectName("btnStats")
+            # — 分析区 —
+            self.btn_stats = QPushButton("📊 统计")
+            self.btn_stats.setToolTip("流量统计报告")
             self.btn_stats.clicked.connect(self._on_show_stats)
             tl.addWidget(self.btn_stats)
 
-            self.btn_trend = QPushButton("趋势图")
-            self.btn_trend.setObjectName("btnTrend")
+            self.btn_trend = QPushButton("📈 趋势")
+            self.btn_trend.setToolTip("流量趋势图")
             self.btn_trend.clicked.connect(self._on_show_trend)
             tl.addWidget(self.btn_trend)
 
-            self.btn_alerts = QPushButton("告警")
-            self.btn_alerts.setObjectName("btnAlerts")
+            self.btn_alerts = QPushButton("⚠ 告警")
+            self.btn_alerts.setToolTip("SYN 洪水检测")
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
 
@@ -201,6 +190,7 @@ if _HAS_PYQT5:
             self.packet_table = PacketTable(backend="pyqt5")
             splitter.addWidget(self.packet_table.widget)
             self.packet_table.on_select = self._on_packet_select
+            self.packet_table.on_context_menu = self._on_packet_context_menu
 
             self.detail_panel = PacketDetailPanel(backend="pyqt5")
             splitter.addWidget(self.detail_panel.widget)
@@ -733,6 +723,32 @@ if _HAS_PYQT5:
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
+
+        def _on_packet_context_menu(self, packet: ParsedPacket, action: str):
+            if action == "follow_tcp":
+                self._follow_tcp_stream(packet)
+
+        def _follow_tcp_stream(self, packet: ParsedPacket):
+            from statistics.tcp_stream import find_stream, format_stream_text
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
+
+            stream = find_stream(self.packets, packet)
+            if not stream:
+                QMessageBox.information(self, "提示", "无法找到该 TCP 流")
+                return
+
+            text = format_stream_text(stream)
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f"TCP 流: {stream.label}")
+            dlg.resize(900, 600)
+            layout = QVBoxLayout(dlg)
+            editor = QTextEdit()
+            editor.setReadOnly(True)
+            editor.setPlainText(text)
+            from PyQt5.QtGui import QFont
+            editor.setFont(QFont("Consolas", 10))
+            layout.addWidget(editor)
+            dlg.exec_()
 
         def run(self):
             """Tkinter 兼容接口"""
