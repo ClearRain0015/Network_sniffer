@@ -156,7 +156,7 @@ if _HAS_PYQT5:
             # — 过滤区 —
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
-            self.filter_input.setPlaceholderText("tcp / udp port 80 / host 192.168.1.1 ...")
+            self.filter_input.setPlaceholderText("tcp / tcp.srcport == 80 / ip.ttl < 64 / tcp.flags.syn == 1 ...")
             self.filter_input.setMinimumWidth(200)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
@@ -165,6 +165,12 @@ if _HAS_PYQT5:
             self.btn_filter.setToolTip("应用过滤表达式")
             self.btn_filter.clicked.connect(self._on_filter_apply)
             tl.addWidget(self.btn_filter)
+
+            self.btn_filter_help = QPushButton("?")
+            self.btn_filter_help.setToolTip("过滤语法帮助")
+            self.btn_filter_help.setFixedWidth(28)
+            self.btn_filter_help.clicked.connect(self._on_filter_help)
+            tl.addWidget(self.btn_filter_help)
 
             tl.addStretch()
 
@@ -633,6 +639,36 @@ if _HAS_PYQT5:
             if self.sniff_thread and self.sniff_thread.isRunning():
                 self.sniff_thread.sniffer.set_filter(bpf)
             self.status_label.setText(f"过滤器: {bpf if bpf else '(无)'}")
+
+        def _on_filter_help(self):
+            help_text = (
+                "═══════ 过滤语法帮助 ═══════\n\n"
+                "■ 简单模式（兼容旧版）\n"
+                "  tcp                  只看 TCP\n"
+                "  udp port 53          只看 UDP 端口 53\n"
+                "  host 192.168.1.1     只看涉及该IP的包\n"
+                "  tcp port 443         只看 TCP 443 (HTTPS)\n\n"
+                "■ 字段级模式（and/or/not）\n"
+                "  tcp.srcport == 80    源端口等于80\n"
+                "  tcp.dstport == 443   目的端口等于443\n"
+                "  ip.src == 10.0.0.1   源IP等于\n"
+                "  ip.dst != 127.0.0.1  目的IP不等于\n"
+                "  ip.ttl < 64          TTL小于64\n"
+                "  ip.len > 1500        包长大于1500\n"
+                "  frame.len >= 100     帧长大于等于100\n\n"
+                "■ TCP Flags\n"
+                "  tcp.flags.syn == 1   只看 SYN 包\n"
+                "  tcp.flags.ack == 1   只看 ACK 包\n"
+                "  tcp.flags.rst == 1   只看 RST 包\n"
+                "  tcp.flags.fin == 1   只看 FIN 包\n\n"
+                "■ 组合\n"
+                "  tcp and tcp.flags.syn == 1\n"
+                "  tcp.srcport == 80 or tcp.dstport == 80\n"
+                "  not arp\n"
+                "  ip.ttl < 64 and tcp.flags.syn == 1\n\n"
+                "■ 清空过滤框点「应用」恢复全部显示"
+            )
+            QMessageBox.information(self, "过滤帮助", help_text)
 
         def _on_show_stats(self):
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
