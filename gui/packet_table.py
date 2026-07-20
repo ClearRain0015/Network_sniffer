@@ -24,6 +24,8 @@ class PacketTable:
         table.on_select = lambda pkt: show_detail(pkt)
     """
 
+    HEADERS = ["No", "Time", "Source", "Destination", "Protocol", "Length", "Info"]
+
     def __init__(self, backend: str = "pyqt5"):
         self.backend = backend
         self.on_select: Optional[Callable[[ParsedPacket], None]] = None
@@ -44,24 +46,22 @@ class PacketTable:
 
         tree = QTreeWidget()
         tree.setColumnCount(7)
-        tree.setHeaderLabels([
-            "No", "Time", "Source", "Destination",
-            "Protocol", "Length", "Info",
-        ])
+        tree.setHeaderLabels(self.HEADERS)
         tree.setRootIsDecorated(False)
         tree.setAlternatingRowColors(True)
         tree.setSelectionBehavior(tree.SelectRows)
         tree.setSelectionMode(tree.SingleSelection)
+        tree.setSortingEnabled(True)  # 点击表头排序
 
         # 列宽
         header = tree.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        for i in range(7):
+            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
         header.setStretchLastSection(True)
+
+        # 表头右键 → 列显示/隐藏
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._on_header_context_menu)
 
         tree.setContextMenuPolicy(Qt.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_context_menu)
@@ -69,6 +69,21 @@ class PacketTable:
 
         self._tree = tree
         self.widget = tree
+
+    def _on_header_context_menu(self, pos):
+        """表头右键菜单 — 显示/隐藏列"""
+        from PyQt5.QtWidgets import QMenu, QAction
+
+        header = self._tree.header()
+        menu = QMenu()
+        for i, name in enumerate(self.HEADERS):
+            action = QAction(name, menu)
+            action.setCheckable(True)
+            action.setChecked(not self._tree.isColumnHidden(i))
+            action.setData(i)
+            action.toggled.connect(lambda checked, col=i: self._tree.setColumnHidden(col, not checked))
+            menu.addAction(action)
+        menu.exec_(header.mapToGlobal(pos))
 
     def _on_context_menu(self, pos):
         """右键菜单"""
