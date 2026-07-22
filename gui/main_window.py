@@ -196,6 +196,28 @@ if _HAS_PYQT5:
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
 
+            tl.addSpacing(8)
+
+            # — 缩放 —
+            self.btn_zoom_out = QPushButton("A⁻")
+            self.btn_zoom_out.setToolTip("缩小字体 (Ctrl+-)")
+            self.btn_zoom_out.setFixedWidth(36)
+            self.btn_zoom_out.clicked.connect(self._zoom_out)
+            tl.addWidget(self.btn_zoom_out)
+
+            self.zoom_label = QLabel("100%")
+            self.zoom_label.setAlignment(Qt.AlignCenter)
+            self.zoom_label.setFixedWidth(42)
+            tl.addWidget(self.zoom_label)
+
+            self.btn_zoom_in = QPushButton("A⁺")
+            self.btn_zoom_in.setToolTip("放大字体 (Ctrl++)")
+            self.btn_zoom_in.setFixedWidth(36)
+            self.btn_zoom_in.clicked.connect(self._zoom_in)
+            tl.addWidget(self.btn_zoom_in)
+
+            tl.addSpacing(8)
+
             self.btn_dark = QPushButton("🌙")
             self.btn_dark.setToolTip("切换暗色模式")
             self.btn_dark.setMinimumWidth(48)
