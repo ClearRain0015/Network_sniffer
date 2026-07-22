@@ -52,6 +52,7 @@ class PacketTable:
         tree.setSelectionBehavior(tree.SelectRows)
         tree.setSelectionMode(tree.SingleSelection)
         tree.setSortingEnabled(True)  # 点击表头排序
+        tree.sortByColumn(0, Qt.AscendingOrder)  # 默认 No 列升序，小号在上
 
         # 列宽
         header = tree.header()
