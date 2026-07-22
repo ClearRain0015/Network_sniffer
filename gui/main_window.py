@@ -744,8 +744,8 @@ if _HAS_PYQT5:
             dlg.resize(int(620 * z), int(600 * z))
             dlg.setMinimumSize(int(480 * z), int(400 * z))
             dlg.setStyleSheet(f"""
-                QDialog {{ background-color: {c["bg"]}; }}
-                QTextEdit {{ font-size: {self._s(14)}; }}
+                QDialog {{ background-color: #ffffff; }}
+                QTextEdit {{ font-size: {int(14 * z)}px; }}
             """)
             layout = QVBoxLayout(dlg)
             layout.setContentsMargins(int(8 * z), int(8 * z), int(8 * z), int(8 * z))
