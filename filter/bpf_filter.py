@@ -21,7 +21,7 @@ from protocols.base import ParsedPacket
 class BPFFilter:
     """BPF 过滤器（支持字段级过滤）"""
 
-    PROTO_KEYWORDS = {"tcp", "udp", "icmp", "arp", "ip", "http", "dns"}
+    PROTO_KEYWORDS = {"tcp", "udp", "icmp", "arp", "ip", "http", "dns", "tls", "ssl"}
     OPS = {"==": "__eq__", "!=": "__ne__", ">=": "__ge__",
            "<=": "__le__", ">": "__gt__", "<": "__lt__",
            "contains": "contains"}
@@ -51,7 +51,35 @@ class BPFFilter:
         "tcp.flags.psh":   lambda p: 1 if (p.tcp_flags & 0x08) else 0,
         "udp.srcport":     lambda p: p.src_port if p.proto_name == "UDP" else 0,
         "udp.dstport":     lambda p: p.dst_port if p.proto_name == "UDP" else 0,
+        # HTTP 字段
+        "http.host":       lambda p: BPFFilter._get_http_field(p, "Host"),
+        "http.uri":        lambda p: BPFFilter._get_http_field(p, "URI"),
+        "http.method":     lambda p: BPFFilter._get_http_field(p, "Method"),
+        "http.status":     lambda p: BPFFilter._get_http_field(p, "Status Code"),
+        "http.version":    lambda p: BPFFilter._get_http_field(p, "Version"),
+        # TLS 字段
+        "tls.sni":         lambda p: getattr(p, "_tls_sni", "") or "",
+        "tls.version":     lambda p: BPFFilter._get_tls_field(p, "Client Version") or
+                                     BPFFilter._get_tls_field(p, "Server Version") or "",
     }
+
+    # ── HTTP/TLS 字段提取辅助方法 ─────────────
+
+    @classmethod
+    def _get_http_field(cls, packet, field_name: str) -> str:
+        """从 HTTP 协议层提取字段"""
+        layer = packet.get_layer("HTTP") if hasattr(packet, "get_layer") else None
+        if layer:
+            return str(layer.fields.get(field_name, ""))
+        return ""
+
+    @classmethod
+    def _get_tls_field(cls, packet, field_name: str) -> str:
+        """从 TLS 协议层提取字段"""
+        layer = packet.get_layer("TLS") if hasattr(packet, "get_layer") else None
+        if layer:
+            return str(layer.fields.get(field_name, ""))
+        return ""
 
     # ── 公共 API ──────────────────────────────
 
@@ -205,6 +233,8 @@ class BPFFilter:
         proto_map = {
             "tcp": "TCP", "udp": "UDP", "icmp": "ICMP", "arp": "ARP",
             "http": "HTTP", "dns": "DNS",
+            "tls": lambda p: p.proto_name in ("TLS", "TLSv1.2") or p.has_layer("TLS"),
+            "ssl": lambda p: p.proto_name in ("TLS", "TLSv1.2") or p.has_layer("TLS"),
             "ip": lambda p: p.proto_name in ("TCP", "UDP", "ICMP", "IPv4"),
         }
         expected = proto_map.get(proto)

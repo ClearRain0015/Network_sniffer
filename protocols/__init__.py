@@ -24,6 +24,7 @@ from .tcp import TCPParser
 from .udp import UDPParser
 from .icmp import ICMPParser
 from .http import HTTPParser
+from .tls import TLSParser
 from .dns import DNSParser
 from .dhcp import DHCPParser
 from .parser_chain import ParserChain
@@ -39,6 +40,7 @@ __all__ = [
     "UDPParser",
     "ICMPParser",
     "HTTPParser",
+    "TLSParser",
     "DNSParser",
     "DHCPParser",
     "ParserChain",

@@ -157,7 +157,7 @@ if _HAS_PYQT5:
             # — 过滤区 —
             tl.addWidget(QLabel("过滤:"))
             self.filter_input = QLineEdit()
-            self.filter_input.setPlaceholderText("tcp / tcp.srcport == 80 / ip.ttl < 64 / tcp.flags.syn == 1 ...")
+            self.filter_input.setPlaceholderText("tcp / http / tls / tcp.port == 443 / tls.sni contains baidu / http.host contains example ...")
             self.filter_input.setMinimumWidth(220)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
@@ -729,6 +729,9 @@ if _HAS_PYQT5:
                 "═══════ 过滤语法帮助 ═══════\n\n"
                 "■ 简单模式（兼容旧版）\n"
                 "  tcp                  只看 TCP\n"
+                "  http                 只看 HTTP\n"
+                "  tls                  只看 TLS/SSL (HTTPS握手)\n"
+                "  dns                  只看 DNS\n"
                 "  udp port 53          只看 UDP 端口 53\n"
                 "  host 192.168.1.1     只看涉及该IP的包\n"
                 "  tcp port 443         只看 TCP 443 (HTTPS)\n\n"
@@ -740,6 +743,15 @@ if _HAS_PYQT5:
                 "  ip.ttl < 64          TTL小于64\n"
                 "  ip.len > 1500        包长大于1500\n"
                 "  frame.len >= 100     帧长大于等于100\n\n"
+                "■ HTTP 字段\n"
+                "  http.host contains baidu      Host头包含\n"
+                "  http.uri == /api/login        URI等于\n"
+                "  http.method == POST           方法等于\n"
+                "  http.status == 200            状态码等于\n\n"
+                "■ TLS/HTTPS 字段\n"
+                "  tls.sni contains google       访问域名包含\n"
+                "  tls.sni == www.baidu.com      访问域名等于\n"
+                "  tls.version == TLS 1.3        TLS版本\n\n"
                 "■ TCP Flags\n"
                 "  tcp.flags.syn == 1   只看 SYN 包\n"
                 "  tcp.flags.ack == 1   只看 ACK 包\n"
@@ -749,6 +761,7 @@ if _HAS_PYQT5:
                 "  tcp and tcp.flags.syn == 1\n"
                 "  tcp.srcport == 80 or tcp.dstport == 80\n"
                 "  not arp\n"
+                "  tls and tls.sni contains baidu\n"
                 "  ip.ttl < 64 and tcp.flags.syn == 1\n\n"
                 "■ 清空过滤框点「应用」恢复全部显示"
             )
