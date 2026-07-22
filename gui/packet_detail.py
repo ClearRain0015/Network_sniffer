@@ -152,21 +152,20 @@ class PacketDetailPanel:
             # 添加每个协议层
             for layer in packet.layers:
                 layer_item = QTreeWidgetItem(self._proto_tree)
-                layer_item.setText(0, f"▼ {layer.name}")
-                layer_item.setExpanded(True)
+                layer_item.setText(0, f"▶ {layer.name}")
+                layer_item.setExpanded(False)
                 for field_name, field_value in layer.fields.items():
                     child = QTreeWidgetItem(layer_item)
                     child.setText(0, field_name)
                     child.setText(1, str(field_value))
-            self._proto_tree.expandAll()
         else:
             # Tkinter
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
             for layer in packet.layers:
                 layer_node = self._tk_tree.insert(
-                    "", "end", text=f"▼ {layer.name}", values=("",),
-                    open=True,
+                    "", "end", text=f"▶ {layer.name}", values=("",),
+                    open=False,
                 )
                 for field_name, field_value in layer.fields.items():
                     self._tk_tree.insert(
