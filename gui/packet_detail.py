@@ -43,16 +43,19 @@ class PacketDetailPanel:
         from PyQt5.QtCore import Qt
         from PyQt5.QtGui import QFont
 
-        widget = QSplitter(Qt.Vertical)
+        # ── 左右分栏 ──────────────────────────
+        widget = QSplitter(Qt.Horizontal)
 
-        # 上半：协议字段树
+        # 左侧：协议字段树
         self._proto_tree = QTreeWidget()
         self._proto_tree.setHeaderLabels(["字段", "值"])
         self._proto_tree.setRootIsDecorated(True)
         self._proto_tree.header().setStretchLastSection(True)
         widget.addWidget(self._proto_tree)
 
-        # 下半：十六进制面板
+        # 右侧：hex + payload 上下排列
+        right_splitter = QSplitter(Qt.Vertical)
+
         self._hex_view = QTextEdit()
         self._hex_view.setReadOnly(True)
         self._hex_view.setFont(QFont("Consolas", 12))
@@ -61,18 +64,20 @@ class PacketDetailPanel:
             "border: 1px solid #dadce0; border-radius: 8px; "
             "font-size: 13px; padding: 8px; }"
         )
-        widget.addWidget(self._hex_view)
+        right_splitter.addWidget(self._hex_view)
 
-        # 底部：Payload 可读文本
         self._payload_view = QTextEdit()
         self._payload_view.setReadOnly(True)
         self._payload_view.setFont(QFont("Consolas", 12))
         self._payload_view.setPlaceholderText("(无应用层数据)")
-        widget.addWidget(self._payload_view)
+        right_splitter.addWidget(self._payload_view)
 
-        widget.setStretchFactor(0, 2)
+        right_splitter.setStretchFactor(0, 1)
+        right_splitter.setStretchFactor(1, 1)
+        widget.addWidget(right_splitter)
+
+        widget.setStretchFactor(0, 1)
         widget.setStretchFactor(1, 1)
-        widget.setStretchFactor(2, 1)
         self.widget = widget
 
     # ── Tkinter 实现 ──────────────────────
@@ -81,33 +86,36 @@ class PacketDetailPanel:
         import tkinter as tk
         from tkinter import ttk
 
+        # ── 左右分栏 ──────────────────────────
         frame = ttk.Frame(parent)
         self._tk_parent = parent
 
-        # 上半：协议树
+        # 左侧：协议树
         tree_frame = ttk.LabelFrame(frame, text="协议详情")
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
+        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         self._tk_tree = ttk.Treeview(tree_frame, show="tree headings",
                                       columns=("value",))
         self._tk_tree.heading("#0", text="字段")
         self._tk_tree.heading("value", text="值")
-        self._tk_tree.column("#0", width=250)
-        self._tk_tree.column("value", width=400)
+        self._tk_tree.column("#0", width=200)
+        self._tk_tree.column("value", width=300)
         self._tk_tree.pack(fill=tk.BOTH, expand=True)
 
-        # 下半：十六进制
-        hex_frame = ttk.LabelFrame(frame, text="十六进制")
-        hex_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
+        # 右侧：hex + payload 上下排列
+        right_frame = ttk.Frame(frame)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        hex_frame = ttk.LabelFrame(right_frame, text="十六进制")
+        hex_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(0, 2))
 
         self._tk_hex = tk.Text(hex_frame, height=10, font=("Consolas", 12),
                                bg="#fafbfc", fg="#202124", insertbackground="#202124",
                                relief=tk.FLAT, padx=10, pady=8)
         self._tk_hex.pack(fill=tk.BOTH, expand=True)
 
-        # 底部：Payload 可读文本
-        payload_frame = ttk.LabelFrame(frame, text="Payload (可读文本)")
-        payload_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
+        payload_frame = ttk.LabelFrame(right_frame, text="Payload (可读文本)")
+        payload_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(2, 0))
 
         self._tk_payload = tk.Text(payload_frame, height=6, font=("Consolas", 10))
         self._tk_payload.pack(fill=tk.BOTH, expand=True)
