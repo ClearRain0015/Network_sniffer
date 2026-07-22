@@ -63,6 +63,8 @@ class PacketTable:
         header.setContextMenuPolicy(Qt.CustomContextMenu)
         header.customContextMenuRequested.connect(self._on_header_context_menu)
 
+        tree.sortByColumn(0, Qt.AscendingOrder)  # 默认按No正序排列
+
         tree.setContextMenuPolicy(Qt.CustomContextMenu)
         tree.customContextMenuRequested.connect(self._on_context_menu)
         tree.itemSelectionChanged.connect(self._on_selection_changed)
