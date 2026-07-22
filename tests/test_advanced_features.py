@@ -5,6 +5,8 @@ import time
 import unittest
 
 from filter.bpf_filter import BPFFilter
+from analysis.http_pairs import build_http_pairs
+from capture.replay import bytes_from_hex, replay_packet
 from protocols.base import ParsedPacket
 from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
@@ -140,6 +142,67 @@ class AdvancedFeatureTests(unittest.TestCase):
         self.assertIsNone(alerts[1])
         self.assertIn("SYN 告警", alerts[2])
         self.assertTrue(detect_syn_alerts(packets, threshold=3, window_seconds=2))
+
+    def test_http_request_response_pairs_are_matched(self):
+        request_payload = b"GET /demo HTTP/1.1\r\nHost: example.com\r\n\r\n"
+        request_tcp = struct.pack(
+            "!HHIIHHHH",
+            50000,
+            80,
+            1,
+            0,
+            (5 << 12) | 0x18,
+            1,
+            0,
+            0,
+        ) + request_payload
+        response_payload = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+        response_tcp = struct.pack(
+            "!HHIIHHHH",
+            80,
+            50000,
+            2,
+            2,
+            (5 << 12) | 0x18,
+            1,
+            0,
+            0,
+        ) + response_payload
+
+        request = parse(ethernet(ipv4_fragment(request_tcp, proto=6, ident=31, flags=0, offset=0)))
+        response = parse(ethernet(ipv4_fragment(response_tcp, proto=6, ident=32, flags=0, offset=0)))
+        request.no = 1
+        response.no = 2
+        response.ip_src = request.ip_dst
+        response.ip_dst = request.ip_src
+        response.timestamp = request.timestamp + 0.125
+
+        pairs = build_http_pairs([request, response])
+
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["request_no"], 1)
+        self.assertEqual(pairs[0]["response_no"], 2)
+        self.assertEqual(pairs[0]["method"], "GET")
+        self.assertEqual(pairs[0]["status_code"], "200")
+        self.assertAlmostEqual(pairs[0]["latency_ms"], 125.0)
+
+    def test_replay_packet_supports_dry_run_and_injected_sender(self):
+        packet = parse(ethernet(ipv4_fragment(b"data", proto=1, ident=40, flags=0, offset=0)))
+        dry = replay_packet(packet, iface="eth-test", dry_run=True)
+        self.assertEqual(dry["bytes"], len(packet.raw_data))
+        self.assertFalse(dry["sent"])
+
+        calls = []
+
+        def fake_sender(raw_data, **kwargs):
+            calls.append((raw_data, kwargs))
+
+        sent = replay_packet(packet, iface="eth-test", sender=fake_sender)
+
+        self.assertTrue(sent["sent"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1]["count"], 1)
+        self.assertEqual(bytes_from_hex("aa bb\ncc"), b"\xaa\xbb\xcc")
 
 
 if __name__ == "__main__":
