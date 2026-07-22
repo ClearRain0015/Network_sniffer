@@ -26,6 +26,7 @@ from .icmp import ICMPParser
 from .tcp import TCPParser
 from .udp import UDPParser
 from .http import HTTPParser
+from .tls import TLSParser
 from .dns import DNSParser
 from .dhcp import DHCPParser
 
@@ -48,6 +49,7 @@ class ParserChain:
         TCPParser,
         UDPParser,
         DHCPParser,
+        TLSParser,
         HTTPParser,
         DNSParser,
     ]
