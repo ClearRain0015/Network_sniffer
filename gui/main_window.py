@@ -757,13 +757,19 @@ if _HAS_PYQT5:
             dlg.exec_()
 
         def _on_show_trend(self):
-            from statistics.flow_statistics import compute_traffic_trend, plot_traffic_trend
+            from statistics.flow_statistics import compute_traffic_trend
             if not self.packets:
                 QMessageBox.information(self, "提示", "没有数据包可绘制趋势图")
                 return
             trend = compute_traffic_trend(self.packets)
-            if not plot_traffic_trend(trend):
-                QMessageBox.information(self, "提示", "无法绘制趋势图，请确认已安装 matplotlib")
+            if not trend:
+                QMessageBox.information(self, "提示", "数据不足以绘制趋势图")
+                return
+            try:
+                from statistics.flow_statistics import plot_traffic_trend
+                plot_traffic_trend(trend)
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"制图失败: {e}\n\n请确认已安装 matplotlib: pip install matplotlib")
 
         def _on_show_alerts(self):
             # 统计 SYN 包信息（调试用）

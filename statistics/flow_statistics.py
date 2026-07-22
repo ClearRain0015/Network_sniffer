@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # 非交互模式，避免 PyQt5 冲突
+except ImportError:
+    pass
+
 """
 statistics/flow_statistics.py — 流量统计
 ========================================
@@ -153,18 +159,43 @@ def format_statistics(stats: dict) -> str:
     return "\n".join(lines)
 
 
+# ── 图表显示工具 ────────────────────────────
+
+def _show_plot(fig, save_path: str = None):
+    """安全地显示或保存图表（避免 PyQt5 事件循环冲突）"""
+    import tempfile, os, subprocess, sys
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        return
+
+    # 保存到临时文件，用系统默认程序打开
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        tmp_path = f.name
+    try:
+        fig.savefig(tmp_path, dpi=150, bbox_inches="tight")
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+        if sys.platform == "win32":
+            os.startfile(tmp_path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", tmp_path])
+        else:
+            subprocess.Popen(["xdg-open", tmp_path])
+    except Exception:
+        pass
+
+
 # ── 可选：流量图表 ──────────────────────────
 
 def plot_protocol_distribution(stats: dict, save_path: str = None):
     """
     绘制协议分布饼图（需要 matplotlib）
-
-    pip install matplotlib
     """
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[!] 需要安装 matplotlib: pip install matplotlib")
+        print("[!] 需要 matplotlib")
         return
 
     proto_dist = stats.get("protocol_dist", {})
@@ -186,10 +217,7 @@ def plot_protocol_distribution(stats: dict, save_path: str = None):
 
     ax.axis("equal")
 
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    else:
-        plt.show()
+    _show_plot(fig, save_path)
 
 
 # ── 流量趋势 ──────────────────────────────
@@ -225,22 +253,19 @@ def plot_traffic_trend(trend: list, save_path: str = None):
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[!] 需要安装 matplotlib: pip install matplotlib")
+        print("[!] 需要 matplotlib")
         return False
     if not trend:
         return False
     x = [t["time"] for t in trend]
     y = [t["packets"] for t in trend]
-    plt.figure(figsize=(10, 4))
+    fig = plt.figure(figsize=(10, 4))
     plt.plot(x, y, marker="o", markersize=2, linewidth=1)
     plt.xlabel("时间 (秒)")
     plt.ylabel("数据包数")
     plt.title("流量趋势")
     plt.grid(True, alpha=0.3)
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    else:
-        plt.show()
+    _show_plot(fig, save_path)
     return True
 
 
