@@ -168,9 +168,20 @@ class PacketTable:
 
         if self.backend == "pyqt5":
             from PyQt5.QtWidgets import QTreeWidgetItem
-            item = QTreeWidgetItem(list(row_data))
+
+            class _SortItem(QTreeWidgetItem):
+                """支持 No/Length 列按数字排序的 Item"""
+                def __lt__(self, other):
+                    col = self.treeWidget().sortColumn()
+                    if col in (0, 5):  # No 列和 Length 列按数字比较
+                        try:
+                            return int(self.text(col)) < int(other.text(col))
+                        except ValueError:
+                            pass
+                    return super().__lt__(other)
+
+            item = _SortItem(list(row_data))
             self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
-            # 自动滚动到底部
             self._tree.scrollToBottom()
         else:
             self._tk_tree.insert("", "end", values=row_data)
