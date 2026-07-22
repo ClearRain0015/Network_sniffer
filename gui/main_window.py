@@ -199,9 +199,9 @@ if _HAS_PYQT5:
             tl.addSpacing(8)
 
             # — 缩放 —
-            self.btn_zoom_out = QPushButton("A⁻")
-            self.btn_zoom_out.setToolTip("缩小字体 (Ctrl+-)")
-            self.btn_zoom_out.setFixedWidth(36)
+            self.btn_zoom_out = QPushButton("−")
+            self.btn_zoom_out.setToolTip("缩小字体 (Ctrl+−)")
+            self.btn_zoom_out.setFixedWidth(30)
             self.btn_zoom_out.clicked.connect(self._zoom_out)
             tl.addWidget(self.btn_zoom_out)
 
@@ -210,9 +210,9 @@ if _HAS_PYQT5:
             self.zoom_label.setFixedWidth(42)
             tl.addWidget(self.zoom_label)
 
-            self.btn_zoom_in = QPushButton("A⁺")
+            self.btn_zoom_in = QPushButton("+")
             self.btn_zoom_in.setToolTip("放大字体 (Ctrl++)")
-            self.btn_zoom_in.setFixedWidth(36)
+            self.btn_zoom_in.setFixedWidth(30)
             self.btn_zoom_in.clicked.connect(self._zoom_in)
             tl.addWidget(self.btn_zoom_in)
 
