@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Packet replay and injection helpers."""
+"""Packet injection and replay helpers.
+
+The functions are intentionally small wrappers around Scapy so the GUI can
+confirm user intent before any traffic is sent.
+"""
 
 from typing import Callable, Dict, Optional
 
 from protocols.base import ParsedPacket
 
 
+def _clean_hex(text: str) -> str:
+    return "".join(ch for ch in text if ch in "0123456789abcdefABCDEF")
+
+
 def bytes_from_hex(text: str) -> bytes:
-    cleaned = "".join(ch for ch in text if ch in "0123456789abcdefABCDEF")
+    cleaned = _clean_hex(text)
     if not cleaned:
-        raise ValueError("十六进制数据为空")
+        raise ValueError("empty hex payload")
     if len(cleaned) % 2:
-        raise ValueError("十六进制字符数量必须为偶数")
+        raise ValueError("hex payload must contain an even number of digits")
     return bytes.fromhex(cleaned)
 
 
@@ -28,12 +36,13 @@ def replay_bytes(
     dry_run: bool = False,
     sender: Optional[Callable[..., object]] = None,
 ) -> Dict[str, object]:
+    """Replay raw bytes with Scapy send/sendp, or return metadata in dry-run mode."""
     if not raw_data:
-        raise ValueError("没有可发送的数据")
+        raise ValueError("packet has no raw bytes to replay")
     if count < 1:
-        raise ValueError("发送次数必须 >= 1")
+        raise ValueError("count must be >= 1")
     if interval < 0:
-        raise ValueError("发送间隔不能为负数")
+        raise ValueError("interval must be >= 0")
 
     mode = "L3" if _looks_like_raw_ip(raw_data) else "L2"
     result = {
@@ -75,7 +84,7 @@ def replay_packet(
     sender: Optional[Callable[..., object]] = None,
 ) -> Dict[str, object]:
     if packet is None:
-        raise ValueError("请先选择一个数据包")
+        raise ValueError("no packet selected")
     return replay_bytes(packet.raw_data, iface, count, interval, dry_run, sender)
 
 

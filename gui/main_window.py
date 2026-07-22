@@ -160,7 +160,7 @@ if _HAS_PYQT5:
             self.lbl_filter = QLabel()
             tl.addWidget(self.lbl_filter)
             self.filter_input = QLineEdit()
-            self.filter_input.setPlaceholderText("tcp / tcp.srcport == 80 / ip.ttl < 64 / tcp.flags.syn == 1 ...")
+            self.filter_input.setPlaceholderText("tcp / http / tls / tcp.port == 443 / tls.sni contains baidu / http.host contains example ...")
             self.filter_input.setMinimumWidth(220)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)

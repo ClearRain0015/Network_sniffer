@@ -45,16 +45,22 @@ class PacketDetailPanel:
         from PyQt5.QtCore import Qt
         from PyQt5.QtGui import QFont
 
-        widget = QSplitter(Qt.Vertical)
+        # ── 左右分栏 ──────────────────────────
+        widget = QSplitter(Qt.Horizontal)
 
-        # 上半：协议字段树
+        # 左侧：协议字段树
         self._proto_tree = QTreeWidget()
-        self._proto_tree.setHeaderLabels([translate("field", self._lang), translate("value", self._lang)])
+        self._proto_tree.setHeaderLabels([
+            translate("field", self._lang),
+            translate("value", self._lang),
+        ])
         self._proto_tree.setRootIsDecorated(True)
         self._proto_tree.header().setStretchLastSection(True)
         widget.addWidget(self._proto_tree)
 
-        # 下半：十六进制面板
+        # 右侧：hex + payload 上下排列
+        right_splitter = QSplitter(Qt.Vertical)
+
         self._hex_view = QTextEdit()
         self._hex_view.setReadOnly(True)
         self._hex_view.setFont(QFont("Consolas", 12))
@@ -63,18 +69,20 @@ class PacketDetailPanel:
             "border: 1px solid #dadce0; border-radius: 8px; "
             "font-size: 13px; padding: 8px; }"
         )
-        widget.addWidget(self._hex_view)
+        right_splitter.addWidget(self._hex_view)
 
-        # 底部：Payload 可读文本
         self._payload_view = QTextEdit()
         self._payload_view.setReadOnly(True)
         self._payload_view.setFont(QFont("Consolas", 12))
         self._payload_view.setPlaceholderText(translate("no_payload", self._lang))
-        widget.addWidget(self._payload_view)
+        right_splitter.addWidget(self._payload_view)
 
-        widget.setStretchFactor(0, 2)
+        right_splitter.setStretchFactor(0, 1)
+        right_splitter.setStretchFactor(1, 1)
+        widget.addWidget(right_splitter)
+
+        widget.setStretchFactor(0, 1)
         widget.setStretchFactor(1, 1)
-        widget.setStretchFactor(2, 1)
         self.widget = widget
 
     # ── Tkinter 实现 ──────────────────────
@@ -83,36 +91,39 @@ class PacketDetailPanel:
         import tkinter as tk
         from tkinter import ttk
 
+        # ── 左右分栏 ──────────────────────────
         frame = ttk.Frame(parent)
         self._tk_parent = parent
 
-        # 上半：协议树
+        # 左侧：协议树
         self._tk_tree_frame = ttk.LabelFrame(frame, text=translate("protocol_details", self._lang))
         tree_frame = self._tk_tree_frame
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
+        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         self._tk_tree = ttk.Treeview(tree_frame, show="tree headings",
                                       columns=("value",))
         self._tk_tree.heading("#0", text=translate("field", self._lang))
         self._tk_tree.heading("value", text=translate("value", self._lang))
-        self._tk_tree.column("#0", width=250)
-        self._tk_tree.column("value", width=400)
+        self._tk_tree.column("#0", width=200)
+        self._tk_tree.column("value", width=300)
         self._tk_tree.pack(fill=tk.BOTH, expand=True)
 
-        # 下半：十六进制
-        self._tk_hex_frame = ttk.LabelFrame(frame, text=translate("hex", self._lang))
+        # 右侧：hex + payload 上下排列
+        right_frame = ttk.Frame(frame)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        self._tk_hex_frame = ttk.LabelFrame(right_frame, text=translate("hex", self._lang))
         hex_frame = self._tk_hex_frame
-        hex_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
+        hex_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(0, 2))
 
         self._tk_hex = tk.Text(hex_frame, height=10, font=("Consolas", 12),
                                bg="#fafbfc", fg="#202124", insertbackground="#202124",
                                relief=tk.FLAT, padx=10, pady=8)
         self._tk_hex.pack(fill=tk.BOTH, expand=True)
 
-        # 底部：Payload 可读文本
-        self._tk_payload_frame = ttk.LabelFrame(frame, text=translate("payload_readable", self._lang))
+        self._tk_payload_frame = ttk.LabelFrame(right_frame, text=translate("payload_readable", self._lang))
         payload_frame = self._tk_payload_frame
-        payload_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
+        payload_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=(2, 0))
 
         self._tk_payload = tk.Text(payload_frame, height=6, font=("Consolas", 10))
         self._tk_payload.pack(fill=tk.BOTH, expand=True)
@@ -143,7 +154,10 @@ class PacketDetailPanel:
         self._lang = lang
         empty_values = {translate("no_payload", "zh"), translate("no_payload", "en")}
         if self.backend == "pyqt5":
-            self._proto_tree.setHeaderLabels([translate("field", lang), translate("value", lang)])
+            self._proto_tree.setHeaderLabels([
+                translate("field", lang),
+                translate("value", lang),
+            ])
             self._payload_view.setPlaceholderText(translate("no_payload", lang))
             if self._payload_view.toPlainText() in empty_values:
                 self._payload_view.setPlainText(translate("no_payload", lang))
@@ -167,21 +181,20 @@ class PacketDetailPanel:
             # 添加每个协议层
             for layer in packet.layers:
                 layer_item = QTreeWidgetItem(self._proto_tree)
-                layer_item.setText(0, f"▼ {layer.name}")
-                layer_item.setExpanded(True)
+                layer_item.setText(0, f"▶ {layer.name}")
+                layer_item.setExpanded(False)
                 for field_name, field_value in layer.fields.items():
                     child = QTreeWidgetItem(layer_item)
                     child.setText(0, field_name)
                     child.setText(1, str(field_value))
-            self._proto_tree.expandAll()
         else:
             # Tkinter
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
             for layer in packet.layers:
                 layer_node = self._tk_tree.insert(
-                    "", "end", text=f"▼ {layer.name}", values=("",),
-                    open=True,
+                    "", "end", text=f"▶ {layer.name}", values=("",),
+                    open=False,
                 )
                 for field_name, field_value in layer.fields.items():
                     self._tk_tree.insert(

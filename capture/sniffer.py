@@ -100,12 +100,40 @@ class Sniffer:
             print("[*] 现在尝试 socket 回退模式（需管理员权限）...")
             self._sniff_with_socket()
 
+    # scapy 原生 BPF 不支持的关键字/运算符
+    _CUSTOM_FILTER_MARKERS = [
+        "http", "dns", "tls", "ssl", "dhcp",
+        "==", "!=", ">=", "<=", "contains",
+        " and ", " or ", " not ",
+        "tcp.srcport", "tcp.dstport", "tcp.flags",
+        "tcp.seq", "tcp.ack",
+        "udp.srcport", "udp.dstport",
+        "ip.src", "ip.dst", "ip.ttl", "ip.len", "ip.proto", "ip.flags",
+        "eth.src", "eth.dst",
+        "frame.len",
+        "http.host", "http.uri", "http.method", "http.status",
+        "tls.sni", "tls.version",
+    ]
+
+    @classmethod
+    def _is_custom_filter(cls, bpf: str) -> bool:
+        """判断过滤器是否包含 scapy BPF 不支持的自定义语法"""
+        if not bpf:
+            return False
+        bpf_lower = bpf.lower()
+        return any(marker in bpf_lower for marker in cls._CUSTOM_FILTER_MARKERS)
+
     def _sniff_with_scapy(self) -> None:
         """使用 scapy 抓包（推荐）"""
         from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, Ether
 
-        # 构造 BPF 过滤字符串
-        filt = self.bpf_filter if self.bpf_filter else None
+        # 如果过滤器包含自定义语法（http/dns/tls/字段级表达式），
+        # 则不传给 scapy，改为全抓 + GUI 层过滤
+        raw_bpf = self.bpf_filter if self.bpf_filter else None
+        if raw_bpf and self._is_custom_filter(raw_bpf):
+            filt = None  # scapy 全抓
+        else:
+            filt = raw_bpf
 
         def process_packet(pkt):
             """scapy 回调：每收到一个包就调用"""

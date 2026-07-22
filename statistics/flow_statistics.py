@@ -95,12 +95,12 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
         "pps": len(packets) / duration,
         "bps": total_bytes / duration,
         "protocol_dist": dict(proto_counter.most_common()),
-        "top_ips": top_ip_counter.most_common(10),
-        "top_src_ips": src_ip_counter.most_common(10),
-        "top_dst_ips": dst_ip_counter.most_common(10),
-        "top_ports": top_port_counter.most_common(10),
-        "top_src_ports": src_port_counter.most_common(10),
-        "top_dst_ports": dst_port_counter.most_common(10),
+        "top_ips": top_ip_counter.most_common(5),
+        "top_src_ips": src_ip_counter.most_common(5),
+        "top_dst_ips": dst_ip_counter.most_common(5),
+        "top_ports": top_port_counter.most_common(5),
+        "top_src_ports": src_port_counter.most_common(5),
+        "top_dst_ports": dst_port_counter.most_common(5),
         "size_buckets": size_buckets,
         "traffic_trend": compute_traffic_trend(packets),
     }
@@ -144,13 +144,13 @@ def format_statistics(stats: dict) -> str:
 
     # Top Source IP
     lines.append("─" * 50)
-    lines.append("⬆  Top 10 源 IP:")
+    lines.append("⬆  Top 5 源 IP:")
     for ip, count in stats.get("top_src_ips", []):
         lines.append(f"  {ip:<18} {count:>5}")
     lines.append("")
 
     # Top Destination IP
-    lines.append("⬇  Top 10 目的 IP:")
+    lines.append("⬇  Top 5 目的 IP:")
     for ip, count in stats.get("top_dst_ips", []):
         lines.append(f"  {ip:<18} {count:>5}")
     lines.append("")

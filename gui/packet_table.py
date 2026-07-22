@@ -54,6 +54,7 @@ class PacketTable:
         tree.setSelectionBehavior(tree.SelectRows)
         tree.setSelectionMode(tree.SingleSelection)
         tree.setSortingEnabled(True)  # 点击表头排序
+        tree.sortByColumn(0, Qt.AscendingOrder)  # 默认 No 列升序，小号在上
 
         # 列宽
         header = tree.header()
@@ -114,9 +115,9 @@ class PacketTable:
         menu.exec_(self._tree.viewport().mapToGlobal(pos))
 
     def _on_selection_changed(self):
+        """PyQt5 选中行事件"""
         from PyQt5.QtCore import Qt
 
-        """PyQt5 选中行事件"""
         items = self._tree.selectedItems()
         if not items:
             return
@@ -178,6 +179,7 @@ class PacketTable:
 
         if self.backend == "pyqt5":
             from PyQt5.QtWidgets import QTreeWidgetItem
+            from PyQt5.QtGui import QColor, QBrush
             from PyQt5.QtCore import Qt
 
             class _SortItem(QTreeWidgetItem):
@@ -193,6 +195,30 @@ class PacketTable:
 
             item = _SortItem(list(row_data))
             item.setData(0, Qt.UserRole, len(self._packets) - 1)
+
+            # ── Wireshark 风格协议着色 ──────────
+            proto_colors = {
+                "HTTP":     QColor("#d4f5d4"),  # 浅绿 — HTTP 明文
+                "TLS":      QColor("#e8d4f5"),  # 浅紫 — TLS/SSL
+                "TLSv1.2":  QColor("#e8d4f5"),  # 浅紫
+                "TLSv1.3":  QColor("#e8d4f5"),  # 浅紫
+                "DNS":      QColor("#d4e3f5"),  # 浅蓝 — DNS
+                "TCP":      QColor("#f5f0d4"),  # 浅黄 — TCP 基础
+                "UDP":      QColor("#f5e6d4"),  # 浅橙 — UDP
+                "ICMP":     QColor("#f5d4d4"),  # 浅红 — ICMP
+                "ARP":      QColor("#f0f0f0"),  # 浅灰 — ARP
+                "DHCP":     QColor("#d4f5f5"),  # 浅青 — DHCP
+            }
+            proto = packet.proto_name
+            # TLSv1.2/TLSv1.3 等变体统一为 TLS 颜色
+            if proto and proto.startswith("TLS"):
+                proto = "TLS"
+
+            color = proto_colors.get(proto)
+            if color:
+                for col in range(7):
+                    item.setBackground(col, QBrush(color))
+
             self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
             self._tree.scrollToBottom()
         else:
@@ -211,56 +237,64 @@ class PacketTable:
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
 
-    def current_packet(self) -> Optional[ParsedPacket]:
+    def current_index(self) -> int:
+        """Return the selected row index, or -1 when nothing is selected."""
         if self.backend == "pyqt5":
-            from PyQt5.QtCore import Qt
             items = self._tree.selectedItems()
             if not items:
-                return None
+                return -1
+            from PyQt5.QtCore import Qt
             idx = items[0].data(0, Qt.UserRole)
-            return self._packets[idx] if 0 <= idx < len(self._packets) else None
+            return idx if isinstance(idx, int) else -1
 
         selection = self._tk_tree.selection()
         if not selection:
-            return None
-        idx = self._tk_tree.index(selection[0])
-        return self._packets[idx] if 0 <= idx < len(self._packets) else None
+            return -1
+        return self._tk_tree.index(selection[0])
 
-    def select_packet(self, packet: ParsedPacket) -> bool:
-        if packet is None:
+    def current_packet(self) -> Optional[ParsedPacket]:
+        idx = self.current_index()
+        if 0 <= idx < len(self._packets):
+            return self._packets[idx]
+        return None
+
+    def select_row(self, index: int) -> bool:
+        """Select and scroll to a row by index."""
+        if not (0 <= index < len(self._packets)):
             return False
 
         if self.backend == "pyqt5":
             from PyQt5.QtCore import Qt
+            item = None
             for row in range(self._tree.topLevelItemCount()):
-                item = self._tree.topLevelItem(row)
-                idx = item.data(0, Qt.UserRole)
-                if 0 <= idx < len(self._packets) and self._packets[idx] is packet:
-                    self._tree.setCurrentItem(item)
-                    self._tree.scrollToItem(item)
-                    return True
-            return False
+                candidate = self._tree.topLevelItem(row)
+                if candidate and candidate.data(0, Qt.UserRole) == index:
+                    item = candidate
+                    break
+            if item is None:
+                return False
+            self._tree.setCurrentItem(item)
+            self._tree.scrollToItem(item)
+            return True
 
-        try:
-            idx = self._packets.index(packet)
-        except ValueError:
-            return False
         children = self._tk_tree.get_children()
-        if idx >= len(children):
+        if index >= len(children):
             return False
-        item = children[idx]
+        item = children[index]
         self._tk_tree.selection_set(item)
         self._tk_tree.focus(item)
         self._tk_tree.see(item)
+        self._on_tk_select(None)
         return True
 
-    def find_packets(self, query: str) -> list:
+    def find_indices(self, query: str) -> list:
+        """Find rows whose visible values contain query, case-insensitively."""
         needle = (query or "").strip().lower()
         if not needle:
             return []
 
         matches = []
-        for packet in self._packets:
+        for idx, packet in enumerate(self._packets):
             haystack = " ".join([
                 str(packet.no),
                 packet.timestamp_str,
@@ -272,8 +306,21 @@ class PacketTable:
                 packet.payload_text or "",
             ]).lower()
             if needle in haystack:
-                matches.append(packet)
+                matches.append(idx)
         return matches
+
+    def find_packets(self, query: str) -> list:
+        return [
+            self._packets[idx]
+            for idx in self.find_indices(query)
+            if 0 <= idx < len(self._packets)
+        ]
+
+    def select_packet(self, packet: ParsedPacket) -> bool:
+        try:
+            return self.select_row(self._packets.index(packet))
+        except ValueError:
+            return False
 
     def set_language(self, lang: str):
         self._lang = lang
