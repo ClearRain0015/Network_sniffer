@@ -3,6 +3,10 @@
 try:
     import matplotlib
     matplotlib.use("Agg")  # 非交互模式，避免 PyQt5 冲突
+    # 配置中文字体
+    import matplotlib.pyplot as _plt
+    _plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans"]
+    _plt.rcParams["axes.unicode_minus"] = False  # 解决负号显示方块
 except ImportError:
     pass
 
