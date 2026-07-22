@@ -11,6 +11,7 @@ gui/packet_table.py — 数据包列表组件
 
 from typing import Optional, Callable
 
+from i18n import t as translate
 from protocols.base import ParsedPacket
 
 
@@ -31,6 +32,7 @@ class PacketTable:
         self.on_select: Optional[Callable[[ParsedPacket], None]] = None
         self.on_context_menu: Optional[Callable[[ParsedPacket, str], None]] = None
         self._packets = []
+        self._lang = "zh"
         self.widget = None
 
         if backend == "pyqt5":
@@ -90,19 +92,21 @@ class PacketTable:
     def _on_context_menu(self, pos):
         """右键菜单"""
         from PyQt5.QtWidgets import QMenu, QAction
-        from PyQt5.QtCore import QPoint
+        from PyQt5.QtCore import Qt
 
         item = self._tree.itemAt(pos)
         if not item:
             return
-        idx = self._tree.indexOfTopLevelItem(item)
+        idx = item.data(0, Qt.UserRole)
+        if not isinstance(idx, int):
+            return
         if idx < 0 or idx >= len(self._packets):
             return
 
         packet = self._packets[idx]
         menu = QMenu()
         if packet.proto_name == "TCP":
-            act = QAction("跟随 TCP 流", menu)
+            act = QAction(translate("follow_tcp_stream", self._lang), menu)
             act.triggered.connect(
                 lambda: self.on_context_menu and self.on_context_menu(packet, "follow_tcp")
             )
@@ -110,12 +114,16 @@ class PacketTable:
         menu.exec_(self._tree.viewport().mapToGlobal(pos))
 
     def _on_selection_changed(self):
+        from PyQt5.QtCore import Qt
+
         """PyQt5 选中行事件"""
         items = self._tree.selectedItems()
         if not items:
             return
         item = items[0]
-        idx = self._tree.indexOfTopLevelItem(item)
+        idx = item.data(0, Qt.UserRole)
+        if not isinstance(idx, int):
+            return
         if 0 <= idx < len(self._packets) and self.on_select:
             self.on_select(self._packets[idx])
 
@@ -170,6 +178,7 @@ class PacketTable:
 
         if self.backend == "pyqt5":
             from PyQt5.QtWidgets import QTreeWidgetItem
+            from PyQt5.QtCore import Qt
 
             class _SortItem(QTreeWidgetItem):
                 """支持 No/Length 列按数字排序的 Item"""
@@ -183,6 +192,7 @@ class PacketTable:
                     return super().__lt__(other)
 
             item = _SortItem(list(row_data))
+            item.setData(0, Qt.UserRole, len(self._packets) - 1)
             self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
             self._tree.scrollToBottom()
         else:
@@ -200,3 +210,70 @@ class PacketTable:
         else:
             for item in self._tk_tree.get_children():
                 self._tk_tree.delete(item)
+
+    def current_packet(self) -> Optional[ParsedPacket]:
+        if self.backend == "pyqt5":
+            from PyQt5.QtCore import Qt
+            items = self._tree.selectedItems()
+            if not items:
+                return None
+            idx = items[0].data(0, Qt.UserRole)
+            return self._packets[idx] if 0 <= idx < len(self._packets) else None
+
+        selection = self._tk_tree.selection()
+        if not selection:
+            return None
+        idx = self._tk_tree.index(selection[0])
+        return self._packets[idx] if 0 <= idx < len(self._packets) else None
+
+    def select_packet(self, packet: ParsedPacket) -> bool:
+        if packet is None:
+            return False
+
+        if self.backend == "pyqt5":
+            from PyQt5.QtCore import Qt
+            for row in range(self._tree.topLevelItemCount()):
+                item = self._tree.topLevelItem(row)
+                idx = item.data(0, Qt.UserRole)
+                if 0 <= idx < len(self._packets) and self._packets[idx] is packet:
+                    self._tree.setCurrentItem(item)
+                    self._tree.scrollToItem(item)
+                    return True
+            return False
+
+        try:
+            idx = self._packets.index(packet)
+        except ValueError:
+            return False
+        children = self._tk_tree.get_children()
+        if idx >= len(children):
+            return False
+        item = children[idx]
+        self._tk_tree.selection_set(item)
+        self._tk_tree.focus(item)
+        self._tk_tree.see(item)
+        return True
+
+    def find_packets(self, query: str) -> list:
+        needle = (query or "").strip().lower()
+        if not needle:
+            return []
+
+        matches = []
+        for packet in self._packets:
+            haystack = " ".join([
+                str(packet.no),
+                packet.timestamp_str,
+                packet.src_str,
+                packet.dst_str,
+                packet.proto_name,
+                packet.length_str,
+                packet.info or packet.summary or "",
+                packet.payload_text or "",
+            ]).lower()
+            if needle in haystack:
+                matches.append(packet)
+        return matches
+
+    def set_language(self, lang: str):
+        self._lang = lang

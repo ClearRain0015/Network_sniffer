@@ -12,6 +12,7 @@ gui/packet_detail.py — 数据包详情面板
 
 from typing import Optional
 
+from i18n import t as translate
 from protocols.base import ParsedPacket, ProtocolLayer
 
 
@@ -27,6 +28,7 @@ class PacketDetailPanel:
     def __init__(self, backend: str = "pyqt5", parent=None):
         self.backend = backend
         self.widget = None
+        self._lang = "zh"
 
         if backend == "pyqt5":
             self._init_pyqt5()
@@ -47,7 +49,7 @@ class PacketDetailPanel:
 
         # 上半：协议字段树
         self._proto_tree = QTreeWidget()
-        self._proto_tree.setHeaderLabels(["字段", "值"])
+        self._proto_tree.setHeaderLabels([translate("field", self._lang), translate("value", self._lang)])
         self._proto_tree.setRootIsDecorated(True)
         self._proto_tree.header().setStretchLastSection(True)
         widget.addWidget(self._proto_tree)
@@ -67,7 +69,7 @@ class PacketDetailPanel:
         self._payload_view = QTextEdit()
         self._payload_view.setReadOnly(True)
         self._payload_view.setFont(QFont("Consolas", 12))
-        self._payload_view.setPlaceholderText("(无应用层数据)")
+        self._payload_view.setPlaceholderText(translate("no_payload", self._lang))
         widget.addWidget(self._payload_view)
 
         widget.setStretchFactor(0, 2)
@@ -85,19 +87,21 @@ class PacketDetailPanel:
         self._tk_parent = parent
 
         # 上半：协议树
-        tree_frame = ttk.LabelFrame(frame, text="协议详情")
+        self._tk_tree_frame = ttk.LabelFrame(frame, text=translate("protocol_details", self._lang))
+        tree_frame = self._tk_tree_frame
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
 
         self._tk_tree = ttk.Treeview(tree_frame, show="tree headings",
                                       columns=("value",))
-        self._tk_tree.heading("#0", text="字段")
-        self._tk_tree.heading("value", text="值")
+        self._tk_tree.heading("#0", text=translate("field", self._lang))
+        self._tk_tree.heading("value", text=translate("value", self._lang))
         self._tk_tree.column("#0", width=250)
         self._tk_tree.column("value", width=400)
         self._tk_tree.pack(fill=tk.BOTH, expand=True)
 
         # 下半：十六进制
-        hex_frame = ttk.LabelFrame(frame, text="十六进制")
+        self._tk_hex_frame = ttk.LabelFrame(frame, text=translate("hex", self._lang))
+        hex_frame = self._tk_hex_frame
         hex_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
 
         self._tk_hex = tk.Text(hex_frame, height=10, font=("Consolas", 12),
@@ -106,7 +110,8 @@ class PacketDetailPanel:
         self._tk_hex.pack(fill=tk.BOTH, expand=True)
 
         # 底部：Payload 可读文本
-        payload_frame = ttk.LabelFrame(frame, text="Payload (可读文本)")
+        self._tk_payload_frame = ttk.LabelFrame(frame, text=translate("payload_readable", self._lang))
+        payload_frame = self._tk_payload_frame
         payload_frame.pack(fill=tk.BOTH, expand=False, padx=4, pady=2)
 
         self._tk_payload = tk.Text(payload_frame, height=6, font=("Consolas", 10))
@@ -133,6 +138,24 @@ class PacketDetailPanel:
                 self._tk_tree.delete(item)
             self._tk_hex.delete("1.0", "end")
             self._tk_payload.delete("1.0", "end")
+
+    def set_language(self, lang: str):
+        self._lang = lang
+        empty_values = {translate("no_payload", "zh"), translate("no_payload", "en")}
+        if self.backend == "pyqt5":
+            self._proto_tree.setHeaderLabels([translate("field", lang), translate("value", lang)])
+            self._payload_view.setPlaceholderText(translate("no_payload", lang))
+            if self._payload_view.toPlainText() in empty_values:
+                self._payload_view.setPlainText(translate("no_payload", lang))
+        else:
+            self._tk_tree_frame.configure(text=translate("protocol_details", lang))
+            self._tk_tree.heading("#0", text=translate("field", lang))
+            self._tk_tree.heading("value", text=translate("value", lang))
+            self._tk_hex_frame.configure(text=translate("hex", lang))
+            self._tk_payload_frame.configure(text=translate("payload_readable", lang))
+            if self._tk_payload.get("1.0", "end").strip() in empty_values:
+                self._tk_payload.delete("1.0", "end")
+                self._tk_payload.insert("1.0", translate("no_payload", lang))
 
     # ── 协议树 ────────────────────────────
 
@@ -218,7 +241,7 @@ class PacketDetailPanel:
 
     def _show_payload(self, packet: ParsedPacket):
         """显示应用层 payload 的可读文本"""
-        text = packet.payload_str if packet.payload_str else "(无应用层数据)"
+        text = packet.payload_str if packet.payload_str else translate("no_payload", self._lang)
         if self.backend == "pyqt5":
             self._payload_view.setPlainText(text)
         else:

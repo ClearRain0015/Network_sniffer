@@ -260,7 +260,7 @@ def compute_traffic_trend(packets, interval: float = 1.0, bucket_seconds: float 
     return result
 
 
-def plot_traffic_trend(trend: list, save_path: str = None):
+def plot_traffic_trend(trend: list, save_path: str = None, lang: str = "zh", **_):
     """绘制流量趋势折线图"""
     try:
         import matplotlib.pyplot as plt
@@ -269,13 +269,17 @@ def plot_traffic_trend(trend: list, save_path: str = None):
         return False
     if not trend:
         return False
+    if trend and "time" not in trend[0]:
+        trend = compute_traffic_trend(trend)
+        if not trend:
+            return False
     x = [t["time"] for t in trend]
     y = [t["packets"] for t in trend]
     fig = plt.figure(figsize=(10, 4))
     plt.plot(x, y, marker="o", markersize=2, linewidth=1)
-    plt.xlabel("时间 (秒)")
-    plt.ylabel("数据包数")
-    plt.title("流量趋势")
+    plt.xlabel("时间 (秒)" if lang == "zh" else "Time (seconds)")
+    plt.ylabel("数据包数" if lang == "zh" else "Packets")
+    plt.title("流量趋势" if lang == "zh" else "Traffic Trend")
     plt.grid(True, alpha=0.3)
     _show_plot(fig, save_path)
     return True
@@ -287,12 +291,13 @@ def _pct(count, total):
     return f"{count/total*100:.1f}%" if total else "0%"
 
 
-def format_statistics_html(stats: dict, zoom: int = 100) -> str:
+def format_statistics_html(stats: dict, zoom: int = 100, lang: str = "zh") -> str:
     """Return the statistics report as styled HTML for rich display."""
     z = zoom / 100
     if stats.get("total_packets", 0) == 0:
+        empty = "暂无数据" if lang == "zh" else "No data"
         return (f'<p style="color:#9aa0a6;text-align:center;'
-                f'padding:{int(48*z)}px;font-size:{int(15*z)}px;">暂无数据</p>')
+                f'padding:{int(48*z)}px;font-size:{int(15*z)}px;">{empty}</p>')
 
     total = stats["total_packets"]
 
@@ -322,19 +327,19 @@ def format_statistics_html(stats: dict, zoom: int = 100) -> str:
         f'<div style="flex:1;background:#e8f0fe;border-radius:{int(12*z)}px;'
         f'padding:{int(18*z)}px;text-align:center;">'
         f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#1a73e8;">{total}</div>'
-        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">数据包</div></div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">{"数据包" if lang == "zh" else "Packets"}</div></div>'
         f'<div style="flex:1;background:#e6f4ea;border-radius:{int(12*z)}px;'
         f'padding:{int(18*z)}px;text-align:center;">'
         f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#1e8e3e;">{stats["total_bytes"]/1024:.1f} KB</div>'
-        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">总流量</div></div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">{"总流量" if lang == "zh" else "Total Traffic"}</div></div>'
         f'<div style="flex:1;background:#fef7e0;border-radius:{int(12*z)}px;'
         f'padding:{int(18*z)}px;text-align:center;">'
         f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#f9ab00;">{stats["pps"]:.1f}</div>'
-        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">包/秒</div></div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">{"包/秒" if lang == "zh" else "Packets/s"}</div></div>'
         f'<div style="flex:1;background:#f3e8fd;border-radius:{int(12*z)}px;'
         f'padding:{int(18*z)}px;text-align:center;">'
         f'<div style="font-size:{int(28*z)}px;font-weight:600;color:#9334e6;">{stats["duration"]:.2f} s</div>'
-        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">捕获时长</div></div>'
+        f'<div style="font-size:{int(12*z)}px;color:#5f6368;margin-top:{int(6*z)}px;">{"捕获时长" if lang == "zh" else "Duration"}</div></div>'
         f'</div>'
     )
 
@@ -342,17 +347,17 @@ def format_statistics_html(stats: dict, zoom: int = 100) -> str:
 
     # 概览表
     overview = "".join([
-        row("平均包长", f'{stats["avg_packet_size"]:.1f} bytes'),
-        row("平均速率", f'{stats["bps"]:.1f} bytes/s'),
+        row("平均包长" if lang == "zh" else "Average Packet Size", f'{stats["avg_packet_size"]:.1f} bytes'),
+        row("平均速率" if lang == "zh" else "Average Rate", f'{stats["bps"]:.1f} bytes/s'),
     ])
-    html += section("概览", overview)
+    html += section("概览" if lang == "zh" else "Overview", overview)
 
     # 协议分布
     proto_rows = "".join([
         row(proto, f'{count} ({_pct(count, total)})')
         for proto, count in stats.get("protocol_dist", {}).items()
     ])
-    html += section("协议分布", proto_rows)
+    html += section("协议分布" if lang == "zh" else "Protocol Distribution", proto_rows)
 
     # Top IP
     ip_rows = "".join([
@@ -364,14 +369,14 @@ def format_statistics_html(stats: dict, zoom: int = 100) -> str:
     port_rows = "".join([
         row(str(port), str(count)) for port, count in stats.get("top_ports", [])
     ])
-    html += section("Top 端口", port_rows)
+    html += section("Top 端口" if lang == "zh" else "Top Ports", port_rows)
 
     # 包大小
     size_rows = "".join([
         row(bucket, f'{count} ({_pct(count, total)})')
         for bucket, count in stats.get("size_buckets", {}).items()
     ])
-    html += section("包大小分布", size_rows)
+    html += section("包大小分布" if lang == "zh" else "Packet Size Distribution", size_rows)
 
     html += '</div>'
     return html
