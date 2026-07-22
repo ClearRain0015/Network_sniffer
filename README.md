@@ -4,17 +4,21 @@
 
 ## 功能特性
 
-- **网卡枚举** — 自动识别所有网卡，显示友好名称+IP，活跃网卡优先
-- **实时抓包** — Scapy 主模式 + Raw Socket 回退（缺 Npcap 时自动降级）
-- **协议解析** — 12 种协议全覆盖
-- **IP 分片重组** — Fragment Table 缓存 + Offset 排序拼接 + 30s 超时淘汰
-- **BPF 过滤** — `tcp` / `udp port 80` / `host 192.168.1.1` / `tcp port 443` 等
-- **Payload 面板** — 显示应用层可读文本（HTTP 请求/响应、DNS 查询等）
-- **PCAP 保存** — `.pcap`（Wireshark 可打开）、TXT、CSV 三种格式
-- **流量统计** — 协议分布、Top IP/端口、包大小分布、pps 速率、饼图、趋势折线图
-- **SYN 洪水告警** — 实时检测 SYN 攻击，自动/手动弹窗告警，阈值可配
-- **双 GUI 后端** — PyQt5（推荐，接近 Wireshark）+ Tkinter（回退）
-- **单元测试** — 协议解析 + 高级功能测试覆盖
+- **网卡枚举** — 自动识别网卡，友好名称+IP，活跃网卡优先
+- **实时抓包** — Scapy 主模式 + Raw Socket 回退（缺 Npcap 自动降级）
+- **PCAP 导入/保存** — 打开 `.pcap` 文件回放，保存为 PCAP/TXT/CSV
+- **协议解析** — 12 种协议全覆盖（Ethernet→IPv4→TCP/UDP→HTTP/DNS）
+- **字段级过滤** — `tcp.srcport == 80` / `ip.ttl < 64` / `tcp.flags.syn == 1`
+- **TCP 流跟踪** — 右键 TCP 包 → 跟随流，拼接双向数据
+- **IP 分片重组** — Fragment Table + Offset 排序拼接 + 30s 超时淘汰
+- **专家信息面板** — 自动标注重传/RST/分片/HTTP/DNS 等事件
+- **列排序+自定义** — 点击表头排序，右键表头显示/隐藏列
+- **Payload 面板** — 应用层可读文本 + 二进制十六进制
+- **流量统计+趋势图** — 协议分布、Top IP、pps、饼图、折线图
+- **SYN 洪水告警** — 实时/手动检测 SYN 攻击，阈值可配，自动弹窗
+- **暗色模式** — 一键切换暗色/亮色主题
+- **双 GUI 后端** — PyQt5（推荐）+ Tkinter（回退）
+- **单元测试** — 11 项测试覆盖协议解析和高级功能
 
 ## 协议支持
 
@@ -199,6 +203,23 @@ User-Agent: Mozilla/5.0 ...
 | `udp port 53` | UDP 且端口 53（DNS 流量） |
 
 清空过滤框点应用即可恢复显示全部。
+
+**字段级过滤（高级）：**
+
+| 输入 | 效果 |
+|------|------|
+| `tcp.srcport == 80` | 源端口等于 80 |
+| `tcp.dstport == 443` | 目的端口等于 443 |
+| `ip.src == 192.168.1.1` | 源 IP 等于 |
+| `ip.ttl < 64` | TTL 小于 64 |
+| `ip.len > 1500` | 包长大于 1500 |
+| `tcp.flags.syn == 1` | 只看 SYN 包 |
+| `tcp.flags.rst == 1` | 只看 RST 包 |
+| `tcp and tcp.flags.syn == 1` | TCP SYN |
+| `not arp` | 排除 ARP |
+| `ip.ttl < 64 and tcp.flags.syn == 1` | 组合条件 |
+
+点击过滤框右侧 **?** 按钮查看完整语法帮助。
 
 ### 4. 保存数据
 
