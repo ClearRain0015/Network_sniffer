@@ -58,6 +58,9 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
     # Top IP
     src_ip_counter = Counter(p.ip_src for p in packets if p.ip_src)
     dst_ip_counter = Counter(p.ip_dst for p in packets if p.ip_dst)
+    top_ip_counter = Counter()
+    top_ip_counter.update(src_ip_counter)
+    top_ip_counter.update(dst_ip_counter)
 
     # Top 端口
     src_port_counter = Counter(
@@ -66,6 +69,9 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
     dst_port_counter = Counter(
         p.dst_port for p in packets if p.dst_port
     )
+    top_port_counter = Counter()
+    top_port_counter.update(src_port_counter)
+    top_port_counter.update(dst_port_counter)
 
     # 包大小分布
     size_buckets = {
@@ -89,8 +95,10 @@ def compute_statistics(packets: List[ParsedPacket]) -> dict:
         "pps": len(packets) / duration,
         "bps": total_bytes / duration,
         "protocol_dist": dict(proto_counter.most_common()),
+        "top_ips": top_ip_counter.most_common(10),
         "top_src_ips": src_ip_counter.most_common(10),
         "top_dst_ips": dst_ip_counter.most_common(10),
+        "top_ports": top_port_counter.most_common(10),
         "top_src_ports": src_port_counter.most_common(10),
         "top_dst_ports": dst_port_counter.most_common(10),
         "size_buckets": size_buckets,
@@ -351,6 +359,12 @@ def format_statistics_html(stats: dict, zoom: int = 100) -> str:
         row(ip, str(count)) for ip, count in stats.get("top_ips", [])
     ])
     html += section("Top IP", ip_rows)
+
+    # Top 端口
+    port_rows = "".join([
+        row(str(port), str(count)) for port, count in stats.get("top_ports", [])
+    ])
+    html += section("Top 端口", port_rows)
 
     # 包大小
     size_rows = "".join([
