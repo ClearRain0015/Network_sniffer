@@ -52,6 +52,16 @@ def parse(raw: bytes) -> ParsedPacket:
 
 
 class AdvancedFeatureTests(unittest.TestCase):
+    def test_timestamp_accepts_scapy_decimal_like_values(self):
+        class DecimalLike:
+            def __float__(self):
+                return 100.25
+
+        packet = ParsedPacket(no=1, timestamp=DecimalLike(), raw_data=b"", length=0)
+
+        self.assertTrue(packet.timestamp_str.endswith(".250000"))
+        self.assertEqual(packet.timestamp_str.count(":"), 2)
+
     def test_bpf_filters_protocol_ip_and_port(self):
         udp_payload = b"hello"
         udp = struct.pack("!HHHH", 53000, 53, 8 + len(udp_payload), 0) + udp_payload

@@ -167,7 +167,7 @@ def read_pcap(filepath: str) -> List[ParsedPacket]:
                 raw = bytes(pkt)
                 parsed = ParsedPacket(
                     no=idx + 1,
-                    timestamp=pkt.time if hasattr(pkt, 'time') else time.time(),
+                    timestamp=float(pkt.time) if hasattr(pkt, 'time') else time.time(),
                     raw_data=raw, length=len(raw),
                 )
                 if pkt.haslayer(Ether):

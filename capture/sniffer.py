@@ -233,7 +233,7 @@ class Sniffer:
         raw = bytes(pkt)
         parsed = ParsedPacket(
             no=packet_no,
-            timestamp=pkt.time if hasattr(pkt, "time") else time.time(),
+            timestamp=float(pkt.time) if hasattr(pkt, "time") else time.time(),
             raw_data=raw,
             length=len(raw),
         )

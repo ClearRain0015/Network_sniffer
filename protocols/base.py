@@ -87,10 +87,11 @@ class ParsedPacket:
     @property
     def timestamp_str(self) -> str:
         """格式化的时间字符串"""
+        ts = float(self.timestamp)
         return time.strftime(
             "%H:%M:%S.",
-            time.localtime(self.timestamp),
-        ) + f"{int((self.timestamp % 1) * 1_000_000):06d}"
+            time.localtime(ts),
+        ) + f"{int((ts % 1) * 1_000_000):06d}"
 
     @property
     def src_str(self) -> str:
