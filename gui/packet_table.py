@@ -11,6 +11,7 @@ gui/packet_table.py — 数据包列表组件
 
 from typing import Optional, Callable
 
+from i18n import t as translate
 from protocols.base import ParsedPacket
 
 
@@ -30,6 +31,7 @@ class PacketTable:
         self.backend = backend
         self.on_select: Optional[Callable[[ParsedPacket], None]] = None
         self.on_context_menu: Optional[Callable[[ParsedPacket, str], None]] = None
+        self._lang = "zh"
         self._packets = []
         self.widget = None
 
@@ -103,7 +105,7 @@ class PacketTable:
         packet = self._packets[idx]
         menu = QMenu()
         if packet.proto_name == "TCP":
-            act = QAction("跟随 TCP 流", menu)
+            act = QAction(translate("follow_tcp_stream", self._lang), menu)
             act.triggered.connect(
                 lambda: self.on_context_menu and self.on_context_menu(packet, "follow_tcp")
             )
@@ -294,3 +296,23 @@ class PacketTable:
             if needle in haystack:
                 matches.append(idx)
         return matches
+
+    def find_packets(self, query: str) -> list:
+        """搜索匹配的数据包对象列表（供搜索功能使用）"""
+        return [
+            self._packets[idx]
+            for idx in self.find_indices(query)
+            if 0 <= idx < len(self._packets)
+        ]
+
+    def select_packet(self, packet: ParsedPacket) -> bool:
+        """选中并滚动到指定的数据包"""
+        try:
+            idx = self._packets.index(packet)
+        except ValueError:
+            return False
+        return self.select_row(idx)
+
+    def set_language(self, lang: str):
+        """设置语言（供 i18n 使用）"""
+        self._lang = lang

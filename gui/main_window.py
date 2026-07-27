@@ -22,6 +22,9 @@ from protocols.parser_chain import ParserChain
 from reassembly.ip_fragment import FragmentReassembler
 from filter.bpf_filter import BPFFilter
 from statistics.alerts import SynFloodDetector, detect_syn_alerts
+from analysis.http_pairs import build_http_pairs, format_http_pairs
+from capture.replay import inject_hex_packet, replay_packet
+from i18n import t as translate
 
 # ═══════════════════════════════════════════════════════════
 #  全局配置（修改这里即可调整参数）
@@ -83,6 +86,9 @@ if _HAS_PYQT5:
 
             self._zoom = 100  # 缩放百分比，100=默认
             self._dark = False  # 暗色模式
+            self._lang = "zh"
+            self._search_matches = []
+            self._search_pos = -1
 
             self.sniff_thread: _SniffThread = None
             self.packets: List[ParsedPacket] = []
@@ -115,19 +121,20 @@ if _HAS_PYQT5:
             tl.setContentsMargins(8, 6, 8, 6)
 
             # — 抓包区 —
-            tl.addWidget(QLabel("网卡:"))
+            self.lbl_iface = QLabel(self._t("iface"))
+            tl.addWidget(self.lbl_iface)
             self.iface_combo = QComboBox()
             self.iface_combo.setMinimumWidth(200)
             self._refresh_interfaces()
             tl.addWidget(self.iface_combo)
 
-            self.btn_start = QPushButton("▶ 开始")
-            self.btn_start.setToolTip("开始抓包")
+            self.btn_start = QPushButton(self._t("start"))
+            self.btn_start.setToolTip(self._t("start_tip"))
             self.btn_start.clicked.connect(self._on_start)
             tl.addWidget(self.btn_start)
 
-            self.btn_stop = QPushButton("⏹ 停止")
-            self.btn_stop.setToolTip("停止抓包")
+            self.btn_stop = QPushButton(self._t("stop"))
+            self.btn_stop.setToolTip(self._t("stop_tip"))
             self.btn_stop.setEnabled(False)
             self.btn_stop.clicked.connect(self._on_stop)
             tl.addWidget(self.btn_stop)
@@ -138,18 +145,18 @@ if _HAS_PYQT5:
             tl.addWidget(vsep)
 
             # — 数据区 —
-            self.btn_open = QPushButton("📂 打开")
-            self.btn_open.setToolTip("打开 PCAP 文件")
+            self.btn_open = QPushButton(self._t("open"))
+            self.btn_open.setToolTip(self._t("open_tip"))
             self.btn_open.clicked.connect(self._on_open_pcap)
             tl.addWidget(self.btn_open)
 
-            self.btn_save = QPushButton("💾 保存")
-            self.btn_save.setToolTip("保存为 PCAP")
+            self.btn_save = QPushButton(self._t("save"))
+            self.btn_save.setToolTip(self._t("save_tip"))
             self.btn_save.clicked.connect(self._on_save)
             tl.addWidget(self.btn_save)
 
-            self.btn_clear = QPushButton("🗑 清空")
-            self.btn_clear.setToolTip("清空所有数据包")
+            self.btn_clear = QPushButton(self._t("clear"))
+            self.btn_clear.setToolTip(self._t("clear_tip"))
             self.btn_clear.clicked.connect(self._on_clear)
             tl.addWidget(self.btn_clear)
 
@@ -159,52 +166,99 @@ if _HAS_PYQT5:
             tl.addWidget(vsep)
 
             # — 过滤区 —
-            tl.addWidget(QLabel("过滤:"))
+            self.lbl_filter = QLabel(self._t("filter"))
+            tl.addWidget(self.lbl_filter)
             self.filter_input = QLineEdit()
             self.filter_input.setPlaceholderText("tcp / http / tls / tcp.port == 443 / tls.sni contains baidu / http.host contains example ...")
             self.filter_input.setMinimumWidth(220)
             self.filter_input.returnPressed.connect(self._on_filter_apply)
             tl.addWidget(self.filter_input)
 
-            self.btn_filter = QPushButton("应用")
-            self.btn_filter.setToolTip("应用过滤表达式")
+            self.btn_filter = QPushButton(self._t("apply"))
+            self.btn_filter.setToolTip(self._t("filter_tip"))
             self.btn_filter.clicked.connect(self._on_filter_apply)
             tl.addWidget(self.btn_filter)
 
             self.btn_filter_help = QPushButton("?")
-            self.btn_filter_help.setToolTip("过滤语法帮助")
+            self.btn_filter_help.setToolTip(self._t("filter_help_tip"))
             self.btn_filter_help.setFixedWidth(28)
             self.btn_filter_help.clicked.connect(self._on_filter_help)
             tl.addWidget(self.btn_filter_help)
 
+            tl.addSpacing(8)
+
+            # — 搜索 —
+            self.search_input = QLineEdit()
+            self.search_input.setPlaceholderText(self._t("search_placeholder"))
+            self.search_input.setMinimumWidth(160)
+            self.search_input.setMaximumWidth(220)
+            self.search_input.returnPressed.connect(self._on_search_next)
+            tl.addWidget(self.search_input)
+
+            self.btn_search_prev = QPushButton("↑")
+            self.btn_search_prev.setToolTip(self._t("search_prev_tip"))
+            self.btn_search_prev.setFixedWidth(30)
+            self.btn_search_prev.clicked.connect(self._on_search_prev)
+            tl.addWidget(self.btn_search_prev)
+
+            self.btn_search_next = QPushButton("↓")
+            self.btn_search_next.setToolTip(self._t("search_next_tip"))
+            self.btn_search_next.setFixedWidth(30)
+            self.btn_search_next.clicked.connect(self._on_search_next)
+            tl.addWidget(self.btn_search_next)
+
             tl.addStretch()
 
             # — 分析区 —
-            self.btn_stats = QPushButton("📊 统计")
-            self.btn_stats.setToolTip("流量统计报告")
+            self.btn_stats = QPushButton(self._t("stats"))
+            self.btn_stats.setToolTip(self._t("stats_tip"))
             self.btn_stats.clicked.connect(self._on_show_stats)
             tl.addWidget(self.btn_stats)
 
-            self.btn_trend = QPushButton("📈 趋势")
-            self.btn_trend.setToolTip("流量趋势图")
+            self.btn_trend = QPushButton(self._t("trend"))
+            self.btn_trend.setToolTip(self._t("trend_tip"))
             self.btn_trend.clicked.connect(self._on_show_trend)
             tl.addWidget(self.btn_trend)
 
-            self.btn_expert = QPushButton("🔍 专家")
-            self.btn_expert.setToolTip("专家信息面板")
+            self.btn_expert = QPushButton(self._t("expert"))
+            self.btn_expert.setToolTip(self._t("expert_tip"))
             self.btn_expert.clicked.connect(self._on_show_expert)
             tl.addWidget(self.btn_expert)
 
-            self.btn_alerts = QPushButton("⚠ 告警")
-            self.btn_alerts.setToolTip("SYN 洪水检测")
+            self.btn_alerts = QPushButton(self._t("alerts"))
+            self.btn_alerts.setToolTip(self._t("alerts_tip"))
             self.btn_alerts.clicked.connect(self._on_show_alerts)
             tl.addWidget(self.btn_alerts)
+
+            # — 扩展 —
+            from PyQt5.QtWidgets import QMenu, QAction
+            self.btn_advanced = QPushButton(self._t("advanced"))
+            self.btn_advanced.setToolTip(self._t("advanced_tip"))
+            self.advanced_menu = QMenu(self)
+            self.act_http_pairs = QAction(self._t("http_pairs"), self)
+            self.act_http_pairs.triggered.connect(self._on_show_http_pairs)
+            self.advanced_menu.addAction(self.act_http_pairs)
+            self.act_replay = QAction(self._t("replay"), self)
+            self.act_replay.triggered.connect(self._on_replay_selected)
+            self.advanced_menu.addAction(self.act_replay)
+            self.act_inject = QAction(self._t("inject"), self)
+            self.act_inject.triggered.connect(self._on_inject_hex)
+            self.advanced_menu.addAction(self.act_inject)
+            self.advanced_menu.addSeparator()
+            self.act_lang_zh = QAction(self._t("language_zh"), self)
+            self.act_lang_zh.triggered.connect(lambda: self._set_language("zh"))
+            self.advanced_menu.addAction(self.act_lang_zh)
+            self.act_lang_en = QAction(self._t("language_en"), self)
+            self.act_lang_en.triggered.connect(lambda: self._set_language("en"))
+            self.advanced_menu.addAction(self.act_lang_en)
+            self.btn_advanced.setMenu(self.advanced_menu)
+            tl.addWidget(self.btn_advanced)
 
             tl.addSpacing(8)
 
             # — 缩放 —
             self.btn_zoom_out = QPushButton("−")
-            self.btn_zoom_out.setToolTip("缩小字体 (Ctrl+−)")
+            self.btn_zoom_out.setToolTip(self._t("zoom_out_tip"))
             self.btn_zoom_out.setFixedWidth(30)
             self.btn_zoom_out.clicked.connect(self._zoom_out)
             tl.addWidget(self.btn_zoom_out)
@@ -215,7 +269,7 @@ if _HAS_PYQT5:
             tl.addWidget(self.zoom_label)
 
             self.btn_zoom_in = QPushButton("+")
-            self.btn_zoom_in.setToolTip("放大字体 (Ctrl++)")
+            self.btn_zoom_in.setToolTip(self._t("zoom_in_tip"))
             self.btn_zoom_in.setFixedWidth(30)
             self.btn_zoom_in.clicked.connect(self._zoom_in)
             tl.addWidget(self.btn_zoom_in)
@@ -223,7 +277,7 @@ if _HAS_PYQT5:
             tl.addSpacing(8)
 
             self.btn_dark = QPushButton("🌙")
-            self.btn_dark.setToolTip("切换暗色模式")
+            self.btn_dark.setToolTip(self._t("dark_tip"))
             self.btn_dark.setMinimumWidth(48)
             self.btn_dark.setMinimumHeight(40)
             self.btn_dark.setStyleSheet("font-size: 22px; padding: 4px 8px;")
@@ -255,14 +309,14 @@ if _HAS_PYQT5:
             from PyQt5.QtWidgets import QSlider
             self.statusbar = QStatusBar()
             self.setStatusBar(self.statusbar)
-            self.status_label = QLabel("就绪 — 请选择网卡并点击「开始抓包」")
+            self.status_label = QLabel(self._t("ready"))
             self.statusbar.addWidget(self.status_label)
 
             self.zoom_slider = QSlider(Qt.Horizontal)
             self.zoom_slider.setRange(80, 200)
             self.zoom_slider.setValue(self._zoom)
             self.zoom_slider.setFixedWidth(120)
-            self.zoom_slider.setToolTip("缩放 {0}% (Ctrl+滚轮)".format(self._zoom))
+            self.zoom_slider.setToolTip(self._tf("zoom_slider_tip", zoom=self._zoom))
             self.zoom_slider.valueChanged.connect(self._on_zoom_slider)
             self.zoom_label = QLabel("100%")
             self.zoom_label.setObjectName("zoomLabel")
@@ -620,9 +674,8 @@ if _HAS_PYQT5:
             # 如果有已有数据，询问是否清空
             if self.packets:
                 reply = QMessageBox.question(
-                    self, "开始抓包",
-                    f"当前已有 {len(self.packets)} 个数据包。\n\n"
-                    "清空后重新开始，还是保留数据继续抓包？",
+                    self, self._t("start_title"),
+                    self._tf("start_keep_or_clear", count=len(self.packets)),
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.Yes,
                 )
@@ -641,10 +694,10 @@ if _HAS_PYQT5:
                 self.btn_start.setEnabled(False)
                 self.btn_stop.setEnabled(True)
                 self.status_label.setText(
-                    f"正在监听 {iface_name} ... 已捕获 {self._capture_counter} 包"
+                    self._tf("listening", iface=iface_name, count=self._capture_counter)
                 )
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"无法开始抓包:\n{e}")
+                QMessageBox.critical(self, self._t("error"), self._tf("cannot_start", error=e))
 
         def _on_stop(self):
             # 立即停止刷新，清空待处理队列
@@ -660,22 +713,24 @@ if _HAS_PYQT5:
             self._refresh_timer.start(100)
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
-            self.status_label.setText(f"已停止 — 共捕获 {self._capture_counter} 个数据包")
+            self.status_label.setText(
+                self._tf("stopped", count=self._capture_counter)
+            )
 
         def _on_save(self):
             from PyQt5.QtWidgets import QFileDialog
             from save.pcap_save import save_packets
             if not self.packets:
-                QMessageBox.information(self, "提示", "没有数据包可保存")
+                QMessageBox.information(self, self._t("hint"), self._t("no_packets_to_save"))
                 return
             path, _ = QFileDialog.getSaveFileName(
-                self, "保存 PCAP 文件", "capture.pcap",
-                "PCAP 文件 (*.pcap);;所有文件 (*)",
+                self, self._t("save_pcap_title"), "capture.pcap",
+                self._t("pcap_filter"),
             )
             if not path:
                 return
             saved = save_packets(self.packets, path)
-            self.status_label.setText(f"已保存到 {saved}")
+            self.status_label.setText(self._tf("saved", path=saved))
 
         def _on_open_pcap(self):
             from PyQt5.QtWidgets import QFileDialog
@@ -683,8 +738,8 @@ if _HAS_PYQT5:
             from protocols.parser_chain import ParserChain
 
             path, _ = QFileDialog.getOpenFileName(
-                self, "打开 PCAP 文件", "",
-                "PCAP 文件 (*.pcap *.pcapng);;所有文件 (*)",
+                self, self._t("open_pcap_title"), "",
+                self._t("pcap_open_filter"),
             )
             if not path:
                 return
@@ -692,7 +747,7 @@ if _HAS_PYQT5:
             try:
                 imported = read_pcap(path)
                 if not imported:
-                    QMessageBox.warning(self, "提示", "文件中没有可读的数据包")
+                    QMessageBox.warning(self, self._t("hint"), self._t("no_readable_packets"))
                     return
 
                 # 解析所有导入的包
@@ -709,10 +764,10 @@ if _HAS_PYQT5:
                 self._capture_counter = start_no
 
                 self.status_label.setText(
-                    f"已导入 {len(imported)} 个包，共 {self._capture_counter} 个包"
+                    self._tf("imported", imported=len(imported), total=self._capture_counter)
                 )
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"无法打开文件:\n{e}")
+                QMessageBox.critical(self, self._t("error"), self._tf("cannot_open", error=e))
 
         def _on_clear(self):
             self.packets.clear()
@@ -720,56 +775,18 @@ if _HAS_PYQT5:
             self.packet_table.clear()
             self.detail_panel.clear()
             self._capture_counter = 0
-            self.status_label.setText("已清空")
+            self.status_label.setText(self._t("cleared"))
 
         def _on_filter_apply(self):
             bpf = self.filter_input.text().strip()
             if self.sniff_thread and self.sniff_thread.isRunning():
                 self.sniff_thread.sniffer.set_filter(bpf)
-            self.status_label.setText(f"过滤器: {bpf if bpf else '(无)'}")
+            self.status_label.setText(
+                self._tf("filter_status", filter=bpf if bpf else self._t("none"))
+            )
 
         def _on_filter_help(self):
-            help_text = (
-                "═══════ 过滤语法帮助 ═══════\n\n"
-                "■ 简单模式（兼容旧版）\n"
-                "  tcp                  只看 TCP\n"
-                "  http                 只看 HTTP\n"
-                "  tls                  只看 TLS/SSL (HTTPS握手)\n"
-                "  dns                  只看 DNS\n"
-                "  udp port 53          只看 UDP 端口 53\n"
-                "  host 192.168.1.1     只看涉及该IP的包\n"
-                "  tcp port 443         只看 TCP 443 (HTTPS)\n\n"
-                "■ 字段级模式（and/or/not）\n"
-                "  tcp.srcport == 80    源端口等于80\n"
-                "  tcp.dstport == 443   目的端口等于443\n"
-                "  ip.src == 10.0.0.1   源IP等于\n"
-                "  ip.dst != 127.0.0.1  目的IP不等于\n"
-                "  ip.ttl < 64          TTL小于64\n"
-                "  ip.len > 1500        包长大于1500\n"
-                "  frame.len >= 100     帧长大于等于100\n\n"
-                "■ HTTP 字段\n"
-                "  http.host contains baidu      Host头包含\n"
-                "  http.uri == /api/login        URI等于\n"
-                "  http.method == POST           方法等于\n"
-                "  http.status == 200            状态码等于\n\n"
-                "■ TLS/HTTPS 字段\n"
-                "  tls.sni contains google       访问域名包含\n"
-                "  tls.sni == www.baidu.com      访问域名等于\n"
-                "  tls.version == TLS 1.3        TLS版本\n\n"
-                "■ TCP Flags\n"
-                "  tcp.flags.syn == 1   只看 SYN 包\n"
-                "  tcp.flags.ack == 1   只看 ACK 包\n"
-                "  tcp.flags.rst == 1   只看 RST 包\n"
-                "  tcp.flags.fin == 1   只看 FIN 包\n\n"
-                "■ 组合\n"
-                "  tcp and tcp.flags.syn == 1\n"
-                "  tcp.srcport == 80 or tcp.dstport == 80\n"
-                "  not arp\n"
-                "  tls and tls.sni contains baidu\n"
-                "  ip.ttl < 64 and tcp.flags.syn == 1\n\n"
-                "■ 清空过滤框点「应用」恢复全部显示"
-            )
-            QMessageBox.information(self, "过滤帮助", help_text)
+            QMessageBox.information(self, self._t("filter_help_title"), self._t("filter_help_text"))
 
         def _on_show_stats(self):
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
@@ -779,7 +796,7 @@ if _HAS_PYQT5:
 
             z = self._zoom / 100
             dlg = QDialog(self)
-            dlg.setWindowTitle("流量统计")
+            dlg.setWindowTitle(self._t("traffic_stats"))
             dlg.resize(int(620 * z), int(600 * z))
             dlg.setMinimumSize(int(480 * z), int(400 * z))
             dlg.setStyleSheet(f"""
@@ -798,17 +815,17 @@ if _HAS_PYQT5:
         def _on_show_trend(self):
             from statistics.flow_statistics import compute_traffic_trend
             if not self.packets:
-                QMessageBox.information(self, "提示", "没有数据包可绘制趋势图")
+                QMessageBox.information(self, self._t("hint"), self._t("no_packets_for_trend"))
                 return
             trend = compute_traffic_trend(self.packets)
             if not trend:
-                QMessageBox.information(self, "提示", "数据不足以绘制趋势图")
+                QMessageBox.information(self, self._t("hint"), self._t("not_enough_trend"))
                 return
             try:
                 from statistics.flow_statistics import plot_traffic_trend
                 plot_traffic_trend(trend)
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"制图失败: {e}\n\n请确认已安装 matplotlib: pip install matplotlib")
+                QMessageBox.critical(self, self._t("error"), self._tf("plot_failed", error=e))
 
         def _on_show_alerts(self):
             # 统计 SYN 包信息（调试用）
@@ -819,27 +836,28 @@ if _HAS_PYQT5:
             alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
             if not alerts:
                 QMessageBox.information(
-                    self, "实时告警",
-                    f"当前未检测到大量 SYN 包\n"
-                    f"（总包数: {len(self.packets)}, "
-                    f"SYN包: {syn_count}, "
-                    f"阈值: {SYNDetection_THRESHOLD}）"
+                    self, self._t("realtime_alert"),
+                    self._tf("no_syn_alert", total=len(self.packets),
+                             syn=syn_count, threshold=SYNDetection_THRESHOLD)
                 )
                 return
-            text = "\n".join(a[2] for a in alerts[-10:])
-            QMessageBox.warning(self, "实时告警", text)
+            text = "\n".join(
+                self._tf("syn_flood", ip=ip, count=count)
+                for ip, count, _ in alerts[-10:]
+            )
+            QMessageBox.warning(self, self._t("realtime_alert"), text)
 
         def _on_show_expert(self):
             from statistics.expert_info import analyze_packets, format_expert_info
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
 
             if not self.packets:
-                QMessageBox.information(self, "专家信息", "没有数据包可分析")
+                QMessageBox.information(self, self._t("expert_info"), self._t("no_packets_for_expert"))
                 return
             items = analyze_packets(self.packets)
             report = format_expert_info(items)
             dlg = QDialog(self)
-            dlg.setWindowTitle("专家信息面板")
+            dlg.setWindowTitle(self._t("expert_panel"))
             dlg.resize(700, 500)
             layout = QVBoxLayout(dlg)
             editor = QTextEdit()
@@ -849,6 +867,168 @@ if _HAS_PYQT5:
             editor.setFont(QFont("Consolas", 11))
             layout.addWidget(editor)
             dlg.exec_()
+
+        # ── i18n 辅助方法 ──────────────────────
+
+        def _t(self, key: str) -> str:
+            return translate(key, self._lang)
+
+        def _tf(self, key: str, **kwargs) -> str:
+            return self._t(key).format(**kwargs)
+
+        def _current_iface_name(self) -> str:
+            idx = self.iface_combo.currentIndex()
+            if idx >= 0 and hasattr(self, '_iface_names') and idx < len(self._iface_names):
+                return self._iface_names[idx]
+            return ""
+
+        def _refresh_ui_texts(self):
+            """刷新所有 UI 文本（语言切换时调用）"""
+            self.setWindowTitle(self._t("app_title"))
+            # 抓包区
+            self.lbl_iface.setText(self._t("iface"))
+            self.btn_start.setText(self._t("start"))
+            self.btn_start.setToolTip(self._t("start_tip"))
+            self.btn_stop.setText(self._t("stop"))
+            self.btn_stop.setToolTip(self._t("stop_tip"))
+            # 数据区
+            self.btn_open.setText(self._t("open"))
+            self.btn_open.setToolTip(self._t("open_tip"))
+            self.btn_save.setText(self._t("save"))
+            self.btn_save.setToolTip(self._t("save_tip"))
+            self.btn_clear.setText(self._t("clear"))
+            self.btn_clear.setToolTip(self._t("clear_tip"))
+            # 过滤区
+            self.lbl_filter.setText(self._t("filter"))
+            self.btn_filter.setText(self._t("apply"))
+            self.btn_filter.setToolTip(self._t("filter_tip"))
+            self.btn_filter_help.setToolTip(self._t("filter_help_tip"))
+            # 搜索
+            self.search_input.setPlaceholderText(self._t("search_placeholder"))
+            self.btn_search_prev.setToolTip(self._t("search_prev_tip"))
+            self.btn_search_next.setToolTip(self._t("search_next_tip"))
+            # 分析区
+            self.btn_stats.setText(self._t("stats"))
+            self.btn_stats.setToolTip(self._t("stats_tip"))
+            self.btn_trend.setText(self._t("trend"))
+            self.btn_trend.setToolTip(self._t("trend_tip"))
+            self.btn_expert.setText(self._t("expert"))
+            self.btn_expert.setToolTip(self._t("expert_tip"))
+            self.btn_alerts.setText(self._t("alerts"))
+            self.btn_alerts.setToolTip(self._t("alerts_tip"))
+            # 扩展
+            self.btn_advanced.setText(self._t("advanced"))
+            self.btn_advanced.setToolTip(self._t("advanced_tip"))
+            self.act_http_pairs.setText(self._t("http_pairs"))
+            self.act_replay.setText(self._t("replay"))
+            self.act_inject.setText(self._t("inject"))
+            self.act_lang_zh.setText(self._t("language_zh"))
+            self.act_lang_en.setText(self._t("language_en"))
+            # 缩放
+            self.btn_zoom_out.setToolTip(self._t("zoom_out_tip"))
+            self.btn_zoom_in.setToolTip(self._t("zoom_in_tip"))
+            self.btn_dark.setToolTip(self._t("dark_tip"))
+            self.zoom_slider.setToolTip(self._tf("zoom_slider_tip", zoom=self._zoom))
+            # 组件
+            if hasattr(self.packet_table, "set_language"):
+                self.packet_table.set_language(self._lang)
+            if hasattr(self.detail_panel, "set_language"):
+                self.detail_panel.set_language(self._lang)
+
+        def _set_language(self, lang: str):
+            self._lang = lang
+            self._refresh_ui_texts()
+            self.status_label.setText(self._t("language_changed"))
+
+        # ── 搜索 ──────────────────────────────
+
+        def _search_packet(self, forward: bool):
+            matches = self.packet_table.find_packets(self.search_input.text())
+            if not matches:
+                self._search_matches = []
+                self._search_pos = -1
+                self.status_label.setText(self._t("no_match"))
+                return
+
+            if matches != self._search_matches:
+                self._search_matches = matches
+                self._search_pos = 0 if forward else len(matches) - 1
+            else:
+                step = 1 if forward else -1
+                self._search_pos = (self._search_pos + step) % len(matches)
+
+            packet = self._search_matches[self._search_pos]
+            self.packet_table.select_packet(packet)
+            self.status_label.setText(
+                f"{self._search_pos + 1}/{len(matches)} -> No {packet.no}"
+            )
+
+        def _on_search_next(self):
+            self._search_packet(True)
+
+        def _on_search_prev(self):
+            self._search_packet(False)
+
+        # ── 扩展功能 ──────────────────────────
+
+        def _on_show_http_pairs(self):
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit
+            if not self.packets:
+                QMessageBox.information(self, self._t("hint"), self._t("no_packets_for_expert"))
+                return
+            pairs = build_http_pairs(self.packets)
+            dlg = QDialog(self)
+            dlg.setWindowTitle(self._t("http_pairs"))
+            dlg.resize(720, 520)
+            layout = QVBoxLayout(dlg)
+            editor = QTextEdit()
+            editor.setReadOnly(True)
+            editor.setPlainText(format_http_pairs(pairs, lang=self._lang))
+            editor.setFont(QFont("Consolas", 10))
+            layout.addWidget(editor)
+            dlg.exec_()
+
+        def _on_replay_selected(self):
+            from PyQt5.QtWidgets import QInputDialog
+            pkt = self.packet_table.current_packet()
+            if not pkt:
+                QMessageBox.information(self, self._t("hint"), self._t("no_packet"))
+                return
+            count, ok = QInputDialog.getInt(
+                self, self._t("replay"),
+                self._tf("replay_confirm", no=pkt.no, length=pkt.length) + "\n\n" + self._t("replay") + ":",
+                1, 1, 100, 1,
+            )
+            if not ok or count < 1:
+                return
+            try:
+                result = replay_packet(pkt, iface=self._current_iface_name(),
+                                       count=count)
+                self.status_label.setText(
+                    self._tf("replayed_status", count=result.get('count', count),
+                             bytes=result.get('bytes', pkt.length * count),
+                             mode=result.get('mode', ''))
+                )
+            except Exception as e:
+                QMessageBox.critical(self, self._t("error"), self._tf("cannot_start", error=e))
+
+        def _on_inject_hex(self):
+            from PyQt5.QtWidgets import QInputDialog
+            hex_str, ok = QInputDialog.getText(
+                self, self._t("inject"), self._t("inject_prompt"),
+            )
+            if not ok or not hex_str:
+                return
+            try:
+                result = inject_hex_packet(hex_str, iface=self._current_iface_name(),
+                                           count=1)
+                self.status_label.setText(
+                    self._tf("injected_status", count=result.get('count', 1),
+                             bytes=result.get('bytes', 0),
+                             mode=result.get('mode', ''))
+                )
+            except Exception as e:
+                QMessageBox.critical(self, self._t("error"), self._tf("cannot_start", error=e))
 
         def _on_packet_arrived(self, packet: ParsedPacket):
             with self._pending_lock:
@@ -893,8 +1073,8 @@ if _HAS_PYQT5:
                     if count >= SYNDetection_THRESHOLD:
                         self._auto_alerted = True
                         QMessageBox.warning(
-                            self, "实时告警 - 自动检测",
-                            f"SYN Flood: {ip} 发送了 {count} 个 SYN 包"
+                            self, self._t("auto_alert"),
+                            self._tf("syn_flood", ip=ip, count=count)
                         )
                         break
                 else:
@@ -917,12 +1097,12 @@ if _HAS_PYQT5:
 
             stream = find_stream(self.packets, packet)
             if not stream:
-                QMessageBox.information(self, "提示", "无法找到该 TCP 流")
+                QMessageBox.information(self, self._t("hint"), self._t("tcp_stream_not_found"))
                 return
 
             text = format_stream_text(stream)
             dlg = QDialog(self)
-            dlg.setWindowTitle(f"TCP 流: {stream.label}")
+            dlg.setWindowTitle(self._tf("tcp_stream", label=stream.label))
             dlg.resize(900, 600)
             layout = QVBoxLayout(dlg)
             editor = QTextEdit()
