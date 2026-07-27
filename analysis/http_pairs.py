@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""HTTP request/response pairing utilities."""
+"""HTTP request/response pairing."""
 
 from collections import defaultdict, deque
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
@@ -10,7 +10,7 @@ from protocols.base import ParsedPacket
 FlowKey = Tuple[str, str, int, int]
 
 
-def _http_layer(packet: ParsedPacket):
+def _http_layer(packet: Optional[ParsedPacket]):
     return packet.get_layer("HTTP") if packet else None
 
 
@@ -22,36 +22,18 @@ def _reverse_flow_key(packet: ParsedPacket) -> FlowKey:
     return (packet.ip_dst, packet.ip_src, packet.dst_port, packet.src_port)
 
 
-def _request_summary(packet: ParsedPacket) -> str:
-    layer = _http_layer(packet)
-    fields = layer.fields if layer else {}
-    method = fields.get("Method", "")
-    uri = fields.get("URI", "")
-    host = fields.get("Host", "")
-    target = f"{host}{uri}" if host else uri
-    return f"{method} {target}".strip()
-
-
-def _response_summary(packet: ParsedPacket) -> str:
-    layer = _http_layer(packet)
-    fields = layer.fields if layer else {}
-    status = fields.get("Status Code", "")
-    line = fields.get("Status Line", "")
-    return f"{status} {line}".strip()
-
-
-def _is_http_request(packet: ParsedPacket) -> bool:
+def _is_request(packet: ParsedPacket) -> bool:
     layer = _http_layer(packet)
     return bool(layer and "Method" in layer.fields)
 
 
-def _is_http_response(packet: ParsedPacket) -> bool:
+def _is_response(packet: ParsedPacket) -> bool:
     layer = _http_layer(packet)
-    return bool(layer and ("Status Code" in layer.fields or "Status Line" in layer.fields))
+    return bool(layer and ("Status Line" in layer.fields or "Status Code" in layer.fields))
 
 
 def build_http_pairs(packets: Iterable[ParsedPacket]) -> List[Dict[str, object]]:
-    """Pair HTTP responses with the earliest pending request in a TCP flow."""
+    """Pair HTTP responses with the earliest pending request in each TCP flow."""
     pending: Dict[FlowKey, Deque[ParsedPacket]] = defaultdict(deque)
     pairs: List[Dict[str, object]] = []
 
@@ -59,52 +41,58 @@ def build_http_pairs(packets: Iterable[ParsedPacket]) -> List[Dict[str, object]]
         if not packet or not packet.has_layer("HTTP"):
             continue
 
-        if _is_http_request(packet):
+        if _is_request(packet):
             pending[_flow_key(packet)].append(packet)
             continue
 
-        if not _is_http_response(packet):
+        if not _is_response(packet):
             continue
 
-        request_queue = pending.get(_reverse_flow_key(packet))
-        request: Optional[ParsedPacket] = request_queue.popleft() if request_queue else None
+        queue = pending.get(_reverse_flow_key(packet))
+        request: Optional[ParsedPacket] = queue.popleft() if queue else None
+        request_layer = _http_layer(request)
+        response_layer = _http_layer(packet)
         latency_ms = None
         if request is not None:
             latency_ms = max(0.0, (packet.timestamp - request.timestamp) * 1000)
 
-        req_layer = _http_layer(request) if request else None
-        resp_layer = _http_layer(packet)
         pairs.append({
             "request_no": request.no if request else None,
             "response_no": packet.no,
             "client": request.ip_src if request else packet.ip_dst,
             "server": request.ip_dst if request else packet.ip_src,
-            "method": req_layer.fields.get("Method", "") if req_layer else "",
-            "uri": req_layer.fields.get("URI", "") if req_layer else "",
-            "host": req_layer.fields.get("Host", "") if req_layer else "",
-            "status_code": resp_layer.fields.get("Status Code", "") if resp_layer else "",
+            "method": request_layer.fields.get("Method", "") if request_layer else "",
+            "uri": request_layer.fields.get("URI", "") if request_layer else "",
+            "host": request_layer.fields.get("Host", "") if request_layer else "",
+            "status_code": response_layer.fields.get("Status Code", "") if response_layer else "",
+            "status_line": response_layer.fields.get("Status Line", "") if response_layer else "",
             "latency_ms": latency_ms,
-            "request": _request_summary(request) if request else "(unmatched request)",
-            "response": _response_summary(packet),
         })
 
     return pairs
 
 
-def format_http_pairs(pairs: List[Dict[str, object]]) -> str:
-    """Format paired HTTP exchanges for the GUI."""
+def format_http_pairs(pairs: List[Dict[str, object]], lang: str = "zh") -> str:
     if not pairs:
-        return "No HTTP request/response pairs found."
+        return "未找到 HTTP 请求/响应配对。" if lang == "zh" else "No HTTP request/response pairs found."
 
-    lines = ["HTTP Request / Response Pairs", "=" * 32]
-    for idx, pair in enumerate(pairs, 1):
+    title = "HTTP 请求 / 响应配对" if lang == "zh" else "HTTP Request / Response Pairs"
+    lines = [title, "=" * 28]
+    for index, pair in enumerate(pairs, 1):
         latency = pair.get("latency_ms")
         latency_text = "-" if latency is None else f"{latency:.1f} ms"
+        request = f"{pair.get('method', '')} {pair.get('host', '')}{pair.get('uri', '')}".strip()
+        response = f"{pair.get('status_code', '')} {pair.get('status_line', '')}".strip()
+        request_label = "请求" if lang == "zh" else "Request"
+        response_label = "响应" if lang == "zh" else "Response"
+        client_label = "客户端" if lang == "zh" else "Client"
+        server_label = "服务器" if lang == "zh" else "Server"
+        latency_label = "延迟" if lang == "zh" else "Latency"
         lines.extend([
-            f"{idx}. Request #{pair.get('request_no') or '-'} -> Response #{pair.get('response_no')}",
-            f"   Client: {pair.get('client')}  Server: {pair.get('server')}",
-            f"   Request: {pair.get('request')}",
-            f"   Response: {pair.get('response')}",
-            f"   Latency: {latency_text}",
+            f"{index}. {request_label} #{pair.get('request_no') or '-'} -> {response_label} #{pair.get('response_no')}",
+            f"   {client_label}: {pair.get('client')}  {server_label}: {pair.get('server')}",
+            f"   {request_label}: {request or '-'}",
+            f"   {response_label}: {response or '-'}",
+            f"   {latency_label}: {latency_text}",
         ])
     return "\n".join(lines)

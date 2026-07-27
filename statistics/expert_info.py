@@ -105,22 +105,24 @@ def analyze_packets(packets: List[ParsedPacket]) -> List[ExpertItem]:
     return items
 
 
-def format_expert_info(items: List[ExpertItem]) -> str:
+def format_expert_info(items: List[ExpertItem], lang: str = "zh") -> str:
     """格式化为可读文本"""
     if not items:
-        return "未发现异常事件"
+        return "未发现异常事件" if lang == "zh" else "No abnormal events found"
 
     by_level: Dict[str, List[ExpertItem]] = defaultdict(list)
     for item in items:
         by_level[item.level].append(item)
 
-    lines = [f"专家信息 ({len(items)} 条)", "=" * 55, ""]
+    item_word = "条" if lang == "zh" else "items"
+    title = f"专家信息 ({len(items)} {item_word})" if lang == "zh" else f"Expert Info ({len(items)} {item_word})"
+    lines = [title, "=" * 55, ""]
 
     for level in ["error", "warning", "note", "chat"]:
         group = by_level.get(level, [])
         if not group:
             continue
-        lines.append(f"{LEVEL_ORDER[level]}. {LEVEL_NAMES[level]} ({len(group)} 条)")
+        lines.append(f"{LEVEL_ORDER[level]}. {LEVEL_NAMES[level]} ({len(group)} {item_word})")
         lines.append("-" * 40)
         for item in group:
             lines.append(f"  #{item.packet_no:<5} {item.summary}")
