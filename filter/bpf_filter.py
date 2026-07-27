@@ -81,7 +81,45 @@ class BPFFilter:
             return str(layer.fields.get(field_name, ""))
         return ""
 
+    # ── 预编译过滤器 ──────────────────────────
+
+    class CompiledFilter:
+        """预编译的过滤器，避免每个包重复解析表达式"""
+        __slots__ = ('_match_func',)
+
+        def __init__(self, expression: str):
+            expr = expression.strip()
+            # 包含字段运算符 OR 布尔运算符 → 走字段表达式路径
+            has_field_ops = any(op in expr for op in BPFFilter.OPS)
+            has_bool_ops = (" or " in expr.lower() or
+                           " and " in expr.lower() or
+                           expr.lower().startswith("not "))
+            if has_field_ops or has_bool_ops:
+                # 不 lower 整个表达式，保留值的大小写
+                or_parts = BPFFilter._split_bool(expr, " or ")
+                and_groups = [BPFFilter._split_bool(p, " and ") for p in or_parts]
+                self._match_func = lambda pkt: any(
+                    all(BPFFilter._match_one(pkt, cond) for cond in group)
+                    for group in and_groups
+                )
+            else:
+                tokens = expr.lower().split()
+                self._match_func = lambda pkt: BPFFilter._match_tokens(pkt, tokens)
+
+        def match(self, packet: ParsedPacket) -> bool:
+            if packet is None:
+                return False
+            try:
+                return self._match_func(packet)
+            except Exception:
+                return True  # 异常时放行
+
     # ── 公共 API ──────────────────────────────
+
+    @classmethod
+    def compile(cls, expression: str) -> "BPFFilter.CompiledFilter":
+        """预编译过滤表达式，用于高频匹配场景"""
+        return BPFFilter.CompiledFilter(expression)
 
     @classmethod
     def match(cls, packet: ParsedPacket, expression: str) -> bool:
@@ -91,8 +129,12 @@ class BPFFilter:
         if not expression or not expression.strip():
             return True
         expr = expression.strip()
-        # 检测是否包含字段级运算符
-        if any(op in expr for op in cls.OPS):
+        # 包含字段运算符 OR 布尔运算符 → 走字段表达式路径
+        has_field_ops = any(op in expr for op in cls.OPS)
+        has_bool_ops = (" or " in expr.lower() or
+                       " and " in expr.lower() or
+                       expr.lower().startswith("not "))
+        if has_field_ops or has_bool_ops:
             return cls._match_field_expr(packet, expr)
         return cls._match_simple(packet, expr)
 
@@ -101,8 +143,8 @@ class BPFFilter:
     @classmethod
     def _match_field_expr(cls, packet, expr: str) -> bool:
         """解析字段级表达式: field op value"""
-        # 按 and/or 分割
-        parts = cls._split_bool(expr.lower(), " or ")
+        # 不 lower 整个表达式，保留值的大小写；字段名在 _match_one 中统一 lower
+        parts = cls._split_bool(expr, " or ")
         return any(cls._match_and_clause(packet, p) for p in parts)
 
     @classmethod
@@ -122,30 +164,30 @@ class BPFFilter:
         for op in sorted(cls.OPS.keys(), key=len, reverse=True):
             if f" {op} " in expr:
                 field_name, value = expr.split(f" {op} ", 1)
-                field_name = field_name.strip()
+                field_name = field_name.strip().lower()  # 字段名统一小写
                 value = value.strip().strip('"').strip("'")
                 result = cls._eval_op(packet, field_name, op, value)
                 return not result if negate else result
             # 边缘情况: op前面没空格
             if op in expr and expr.index(op) > 0:
                 idx = expr.index(op)
-                field_name = expr[:idx].strip()
+                field_name = expr[:idx].strip().lower()
                 value = expr[idx + len(op):].strip().strip('"').strip("'")
                 result = cls._eval_op(packet, field_name, op, value)
                 return not result if negate else result
 
-        # 回退: 简单协议匹配
-        if expr in cls.PROTO_KEYWORDS:
-            result = cls._match_proto(packet, expr)
+        # 回退: 简单协议匹配（大小写不敏感）
+        if expr.lower() in cls.PROTO_KEYWORDS:
+            result = cls._match_proto(packet, expr.lower())
             return not result if negate else result
         return True
 
     @classmethod
     def _eval_op(cls, packet, field: str, op: str, value_str: str) -> bool:
         """计算字段值是否匹配"""
-        # 协议限定的老语法: tcp port 80
+        # 协议限定的老语法: tcp port 80（大小写不敏感）
         tokens = field.split()
-        if len(tokens) >= 2 and tokens[0] in cls.PROTO_KEYWORDS and tokens[1] in ("port", "host"):
+        if len(tokens) >= 2 and tokens[0].lower() in cls.PROTO_KEYWORDS and tokens[1] in ("port", "host"):
             return cls._match_simple(packet, f"{field} {op} {value_str}")
 
         getter = cls.FIELD_MAP.get(field)
@@ -164,9 +206,16 @@ class BPFFilter:
         try:
             expected = int(value_str)
         except ValueError:
-            # 字符串比较
-            actual = str(actual)
-            expected = value_str
+            # 字符串比较（大小写不敏感，如 http.method == GET 匹配 get）
+            actual = str(actual).lower()
+            expected = value_str.lower()
+        else:
+            # 数字比较：确保 actual 也是数字
+            if not isinstance(actual, (int, float)):
+                try:
+                    actual = int(actual)
+                except (ValueError, TypeError):
+                    return False  # 类型不匹配（如 "" == 200）
 
         op_method = cls.OPS[op]
         try:

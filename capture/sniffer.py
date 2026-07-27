@@ -38,7 +38,7 @@ class Sniffer:
     def __init__(self, interface: str = "eth0", bpf_filter: str = ""):
         self.interface = interface
         self.bpf_filter = bpf_filter
-        self.print_packets = True
+        self.print_packets = False  # 默认关闭终端打印，高流量下避免 I/O 卡顿
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._packet_count = 0
