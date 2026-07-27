@@ -74,6 +74,7 @@ class DNSParser:
                 offset += 1 + length
             query_name = ".".join(parts)
 
+        packet.proto_name = "DNS"
         packet.info = f"DNS {msg_type}: {query_name}" if query_name else f"DNS {msg_type}"
 
         packet.add_layer("DNS", {

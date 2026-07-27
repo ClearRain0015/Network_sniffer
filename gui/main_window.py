@@ -89,8 +89,12 @@ if _HAS_PYQT5:
             self._capture_counter = 0
             self._auto_alerted = False
             self._reassembler = FragmentReassembler()
-            self._syn_detector = SynFloodDetector()
+            self._syn_detector = SynFloodDetector(
+                threshold=SYNDetection_THRESHOLD, window=2.0
+            )
             self._last_alert_at = 0.0
+            self._compiled_filter = None  # 预编译的过滤器缓存
+            self._filter_text_cache = ""  # 上次编译时的过滤文本
             self._build_ui()
 
             self._pending_packets: List[ParsedPacket] = []
@@ -854,32 +858,51 @@ if _HAS_PYQT5:
             with self._pending_lock:
                 if not self._pending_packets:
                     return
-                # 每次最多处理 50 个包，防止 UI 卡顿
-                batch = self._pending_packets[:50]
-                self._pending_packets = self._pending_packets[50:]
+                # 动态批次：pending 越多一次处理越多（50~500）
+                pending_count = len(self._pending_packets)
+                batch_size = max(50, min(500, pending_count // 2))
+                batch = self._pending_packets[:batch_size]
+                self._pending_packets = self._pending_packets[batch_size:]
+
+            # ── 预编译过滤器（仅当文本变化时才重新编译）──
+            filter_text = self.filter_input.text().strip()
+            if filter_text != self._filter_text_cache:
+                self._filter_text_cache = filter_text
+                self._compiled_filter = BPFFilter.compile(filter_text) if filter_text else None
+            compiled_filter = self._compiled_filter
+
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
                 if packet is None:
-                    continue  # 分片未到齐，等待后续
-                if self.filter_input.text().strip():
-                    if not BPFFilter.match(packet, self.filter_input.text().strip()):
-                        continue
+                    continue  # 分片未到齐
+                if compiled_filter and not compiled_filter.match(packet):
+                    continue
                 self._capture_counter += 1
                 packet.no = self._capture_counter
                 self.packets.append(packet)
                 self.packet_table.add_packet(packet)
 
-            # ── 自动告警：检测到 SYN 洪水就弹窗 ──
-            alerts = detect_syn_alerts(self.packets, threshold=SYNDetection_THRESHOLD)
-            if alerts and not self._auto_alerted:
-                self._auto_alerted = True
-                msg = "\n".join(a[2] for a in alerts[-5:]) if alerts else ""
-                QMessageBox.warning(
-                    self, "实时告警 - 自动检测", msg
-                )
-            elif not alerts:
-                self._auto_alerted = False  # 解除锁定，允许下次报警
+                # ── 增量式 SYN 检测（仅检查新包，不扫描全量）──
+                self._syn_detector.observe(packet)
+
+            # ── 自动告警（基于增量检测器的累积结果）──
+            if not self._auto_alerted:
+                top = self._syn_detector.get_top_syn_sources(10)
+                for ip, count in top:
+                    if count >= SYNDetection_THRESHOLD:
+                        self._auto_alerted = True
+                        QMessageBox.warning(
+                            self, "实时告警 - 自动检测",
+                            f"SYN Flood: {ip} 发送了 {count} 个 SYN 包"
+                        )
+                        break
+                else:
+                    # 没有 IP 超过阈值，保持未告警状态（允许下次触发）
+                    pass
+            elif not self._syn_detector.get_top_syn_sources(1):
+                # 之前告警过，现在清静了，重置
+                self._auto_alerted = False
 
         def _on_packet_select(self, packet: ParsedPacket):
             self.detail_panel.show_packet(packet)
@@ -957,8 +980,12 @@ else:
             self.packets: List[ParsedPacket] = []
             self._capture_counter = 0
             self._reassembler = FragmentReassembler()
-            self._syn_detector = SynFloodDetector()
+            self._syn_detector = SynFloodDetector(
+                threshold=SYNDetection_THRESHOLD, window=2.0
+            )
             self._last_alert_at = 0.0
+            self._tk_compiled_filter = None
+            self._tk_filter_cache = ""
 
             self._build_tk_ui()
 
@@ -1331,17 +1358,26 @@ else:
         def _tk_flush(self):
             with self._tk_lock:
                 if self._tk_pending:
-                    batch = self._tk_pending[:50]
-                    self._tk_pending = self._tk_pending[50:]
+                    pending_count = len(self._tk_pending)
+                    batch_size = max(50, min(500, pending_count // 2))
+                    batch = self._tk_pending[:batch_size]
+                    self._tk_pending = self._tk_pending[batch_size:]
                 else:
                     batch = []
+
+            # 预编译过滤器
+            filter_text = self.filter_var.get().strip()
+            if filter_text != self._tk_filter_cache:
+                self._tk_filter_cache = filter_text
+                self._tk_compiled_filter = BPFFilter.compile(filter_text) if filter_text else None
+            compiled_filter = self._tk_compiled_filter
+
             for packet in batch:
                 packet = ParserChain.parse(packet)
                 packet = self._reassembler.process(packet)
                 if packet is None:
-                    continue  # 分片未到齐，等待后续
-                bpf = self.filter_var.get().strip()
-                if bpf and not BPFFilter.match(packet, bpf):
+                    continue
+                if compiled_filter and not compiled_filter.match(packet):
                     continue
                 self._capture_counter += 1
                 packet.no = self._capture_counter
@@ -1352,6 +1388,8 @@ else:
                     packet.proto_name, packet.length_str,
                     packet.info or packet.summary,
                 ))
+                # 增量式 SYN 检测
+                self._syn_detector.observe(packet)
             self.root.after(100, self._tk_flush)
 
         def _check_tk_realtime_alert(self, packet: ParsedPacket):

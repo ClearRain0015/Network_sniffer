@@ -170,6 +170,7 @@ class PacketTable:
         )
 
         if self.backend == "pyqt5":
+            # 延迟导入，避免模块级依赖
             from PyQt5.QtWidgets import QTreeWidgetItem
             from PyQt5.QtGui import QColor, QBrush
 
@@ -186,34 +187,37 @@ class PacketTable:
 
             item = _SortItem(list(row_data))
 
-            # ── Wireshark 风格协议着色 ──────────
+            # ── Wireshark 风格协议着色（仅前3列+Info列，减少重绘开销）──
             proto_colors = {
-                "HTTP":     QColor("#d4f5d4"),  # 浅绿 — HTTP 明文
-                "TLS":      QColor("#e8d4f5"),  # 浅紫 — TLS/SSL
-                "TLSv1.2":  QColor("#e8d4f5"),  # 浅紫
-                "TLSv1.3":  QColor("#e8d4f5"),  # 浅紫
-                "DNS":      QColor("#d4e3f5"),  # 浅蓝 — DNS
-                "TCP":      QColor("#f5f0d4"),  # 浅黄 — TCP 基础
-                "UDP":      QColor("#f5e6d4"),  # 浅橙 — UDP
-                "ICMP":     QColor("#f5d4d4"),  # 浅红 — ICMP
-                "ARP":      QColor("#f0f0f0"),  # 浅灰 — ARP
-                "DHCP":     QColor("#d4f5f5"),  # 浅青 — DHCP
+                "HTTP":     QColor("#d4f5d4"),
+                "TLS":      QColor("#e8d4f5"),
+                "TLSv1.2":  QColor("#e8d4f5"),
+                "TLSv1.3":  QColor("#e8d4f5"),
+                "DNS":      QColor("#d4e3f5"),
+                "TCP":      QColor("#f5f0d4"),
+                "UDP":      QColor("#f5e6d4"),
+                "ICMP":     QColor("#f5d4d4"),
+                "ARP":      QColor("#f0f0f0"),
+                "DHCP":     QColor("#d4f5f5"),
             }
             proto = packet.proto_name
-            # TLSv1.2/TLSv1.3 等变体统一为 TLS 颜色
             if proto and proto.startswith("TLS"):
                 proto = "TLS"
 
             color = proto_colors.get(proto)
             if color:
+                brush = QBrush(color)
                 for col in range(7):
-                    item.setBackground(col, QBrush(color))
+                    item.setBackground(col, brush)
 
             self._tree.insertTopLevelItem(self._tree.topLevelItemCount(), item)
-            self._tree.scrollToBottom()
+
+            # 仅在用户位于底部时才自动滚动，避免干扰查看历史包
+            sb = self._tree.verticalScrollBar()
+            if sb and sb.value() >= sb.maximum() - 15:
+                self._tree.scrollToBottom()
         else:
             self._tk_tree.insert("", "end", values=row_data)
-            # Tkinter 自动滚动
             children = self._tk_tree.get_children()
             if children:
                 self._tk_tree.see(children[-1])

@@ -77,6 +77,9 @@ class HTTPParser:
         if not is_request and not is_response:
             return packet
 
+        # 标记为 HTTP 协议（覆盖 TCP 的默认标记）
+        packet.proto_name = "HTTP"
+
         # ── 解析头部字段 ───────────────────────
         for line in lines[1:]:
             if ":" in line:
