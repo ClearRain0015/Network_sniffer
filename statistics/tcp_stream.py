@@ -142,14 +142,14 @@ def format_stream_text(stream: TCPStream) -> str:
         info = p.info or p.summary or ""
         lines.append(f"[{ts}] {direction} {info}")
         if sp.payload:
-            try:
-                text = sp.payload.decode("utf-8", errors="replace")
-                # 截断每行
-                for line in text.split("\n")[:20]:  # 每个包最多显示20行payload
+            # 用 payload_str 自动识别二进制（超过10%非打印字符→十六进制）
+            text = sp.packet.payload_str
+            if text:
+                for line in text.split("\n")[:20]:
                     lines.append(f"       {line}")
                 if len(text.split("\n")) > 20:
                     lines.append(f"       ... ({len(sp.payload)} bytes)")
-            except Exception:
+            else:
                 lines.append(f"       [{len(sp.payload)} bytes binary]")
         lines.append("")
     return "\n".join(lines)
